@@ -35,6 +35,8 @@ output "embedded_llm" {
     base_filename = var.opnsense_llm_base_filename
     lora_filename = var.opnsense_llm_lora_filename
     health_check  = "ssh -p ${var.opnsense_ssh_port} root@${module.opnsense.public_ip} 'curl -sf http://${var.opnsense_llm_listen_addr}:${var.opnsense_llm_port}/health'"
+    agent_health  = "ssh -p ${var.opnsense_ssh_port} root@${module.opnsense.public_ip} 'oaf-agent health'"
+    agent_ask     = "ssh -p ${var.opnsense_ssh_port} root@${module.opnsense.public_ip} 'oaf-agent ask \"List all scheduled cron jobs\"'"
   } : { enabled = false }
 }
 

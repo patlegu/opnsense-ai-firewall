@@ -294,8 +294,9 @@ module "wireguard_mesh" {
 # (palier B). Sinon, tofu apply fail-fast avec un message lisible.
 
 locals {
-  llm_bin_path  = "${path.module}/../../../llama-bin/freebsd-amd64/llama-server"
-  llm_libs_path = "${path.module}/../../../llama-bin/freebsd-amd64/lib"
+  llm_bin_path   = "${path.module}/../../../llama-bin/freebsd-amd64/llama-server"
+  llm_libs_path  = "${path.module}/../../../llama-bin/freebsd-amd64/lib"
+  llm_agent_path = "${path.module}/../../../agent/oaf_agent.py"
 
   llm_rc_script = templatefile("${path.module}/templates/rc-llama.tftpl", {
     listen_addr   = var.opnsense_llm_listen_addr
@@ -333,14 +334,15 @@ resource "null_resource" "embedded_llm" {
 
   # Re-trigger si le binaire local change OU si les paramètres LLM changent.
   triggers = {
-    binary_md5     = filemd5(local.llm_bin_path)
-    rc_script_sha  = sha256(local.llm_rc_script)
-    post_inst_sha  = sha256(local.llm_post_install)
-    base_url       = var.opnsense_llm_base_url
-    lora_url       = var.opnsense_llm_lora_url
-    listen_addr    = var.opnsense_llm_listen_addr
-    port           = var.opnsense_llm_port
-    opnsense_ip    = module.opnsense.public_ip
+    binary_md5    = filemd5(local.llm_bin_path)
+    agent_md5     = filemd5(local.llm_agent_path)
+    rc_script_sha = sha256(local.llm_rc_script)
+    post_inst_sha = sha256(local.llm_post_install)
+    base_url      = var.opnsense_llm_base_url
+    lora_url      = var.opnsense_llm_lora_url
+    listen_addr   = var.opnsense_llm_listen_addr
+    port          = var.opnsense_llm_port
+    opnsense_ip   = module.opnsense.public_ip
   }
 
   connection {
@@ -352,10 +354,15 @@ resource "null_resource" "embedded_llm" {
     timeout     = "5m"
   }
 
-  # 1. Préparer l'arborescence /var/llm/{bin,lib,models}
+  # 1. Préparer l'arborescence /var/llm/{bin,lib,models,agent} +
+  #    s'assurer que python3 est installé (l'agent local en a besoin).
+  #    `pkg` est dans OPNsense ; python3 est en pkg "python311" (ou
+  #    fallback "python3") et un symlink /usr/local/bin/python3 doit
+  #    pointer dessus.
   provisioner "remote-exec" {
     inline = [
-      "mkdir -p /var/llm/bin /var/llm/lib /var/llm/models /var/log/llama",
+      "mkdir -p /var/llm/bin /var/llm/lib /var/llm/models /var/llm/agent /var/log/llama",
+      "command -v python3 >/dev/null 2>&1 || pkg install -y python311 || pkg install -y python3",
     ]
   }
 
@@ -383,10 +390,27 @@ resource "null_resource" "embedded_llm" {
     destination = "/tmp/post-install-llm.sh"
   }
 
-  # 6. chmod + exécution du post-install (download GGUF + start service + healthcheck)
+  # 6. SCP de l'agent local oaf_agent.py (palier D)
+  provisioner "file" {
+    source      = local.llm_agent_path
+    destination = "/var/llm/agent/oaf_agent.py"
+  }
+
+  # 7. Wrapper /usr/local/bin/oaf-agent → exécute oaf_agent.py avec python3.
+  #    Permet d'écrire simplement `oaf-agent ask "..."` en CLI.
+  #    Heredoc avec EOF non-quoté pour qu'il soit transmis tel quel.
+  provisioner "file" {
+    content     = <<-EOT
+      #!/bin/sh
+      exec /usr/local/bin/python3 /var/llm/agent/oaf_agent.py "$@"
+    EOT
+    destination = "/usr/local/bin/oaf-agent"
+  }
+
+  # 8. chmod + exécution du post-install (download GGUF + start service + healthcheck)
   provisioner "remote-exec" {
     inline = [
-      "chmod +x /var/llm/bin/llama-server /usr/local/etc/rc.d/llama /tmp/post-install-llm.sh",
+      "chmod +x /var/llm/bin/llama-server /usr/local/etc/rc.d/llama /tmp/post-install-llm.sh /usr/local/bin/oaf-agent",
       "/tmp/post-install-llm.sh",
     ]
   }
