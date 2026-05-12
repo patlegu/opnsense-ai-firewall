@@ -46,7 +46,7 @@ fi
 
 # daemon(8) wrap : crée le PID, redirige stdout/stderr, daemonize.
 command="/usr/sbin/daemon"
-command_args="-P $pidfile -o $LLM_LOG -- env LD_LIBRARY_PATH=$LLM_LIBS $LLM_BIN -m $LLM_MODEL $LLM_LORA_FLAG --host $LLM_LISTEN --port $LLM_PORT --ctx-size $LLM_CTX"
+command_args="-P $pidfile -o $LLM_LOG -- env LD_LIBRARY_PATH=$LLM_LIBS $LLM_BIN -m $LLM_MODEL $LLM_LORA_FLAG --host $LLM_LISTEN --port $LLM_PORT --ctx-size $LLM_CTX --jinja"
 
 start_precmd="llama_precmd"
 
