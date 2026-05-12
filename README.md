@@ -1,5 +1,7 @@
 # opnsense-ai-firewall
 
+🇫🇷 **Français** · [🇬🇧 English](README.en.md)
+
 **Experimental** — déploie une VM OPNsense Hetzner avec un LLM
 embarqué (llama-server FreeBSD + LoRA Phi-3 OPNsense) qui pilote son
 propre API depuis l'intérieur de la VM. **Pas de sidecar.**
