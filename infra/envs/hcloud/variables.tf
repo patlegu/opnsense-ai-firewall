@@ -194,6 +194,22 @@ variable "llm_lora_download_urls" {
   default     = {}
 }
 
+# Vars vestiges du kickstart (sidecar LLM) — gardées pour ne pas casser
+# le module hcloud-agent référencé dans main.tf. Inutile dans ce repo
+# (llm_vms = {} par défaut), donc default vide.
+
+variable "llm_libs_archive_url_aarch64" {
+  description = "Hérité kickstart — URL archive libs ARM64 pour les VMs LLM sidecar. Vide = pas de sidecar (cas de ce repo)."
+  type        = string
+  default     = ""
+}
+
+variable "llm_libs_archive_url_amd64" {
+  description = "Hérité kickstart — URL archive libs amd64 pour les VMs LLM sidecar. Vide = pas de sidecar (cas de ce repo)."
+  type        = string
+  default     = ""
+}
+
 # ── LLM EMBARQUÉ DANS OPNSENSE (caractéristique de ce repo) ─────────────────
 #
 # Au lieu d'un sidecar VM, on push llama-server + base GGUF + LoRA
