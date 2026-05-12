@@ -51,13 +51,21 @@ DEFAULT_TIMEOUT = int(os.environ.get("OAF_TIMEOUT", "120"))
 
 # Liste blanche de tools — n'importe quel autre tool_call est rejeté.
 # Format : nom_outil → (méthode_http, chemin, est_mutating)
+#
+# Les noms doivent matcher ce sur quoi le LoRA `opnsense-agent-phi35` a été
+# entraîné (cf. data/sft/opnsense_train.jsonl du repo cyber-agent-engine).
+# Quand le LoRA propose un nom hors whitelist (ex: aux1_cron_jobs, etc.),
+# soit on ajoute l'alias ici, soit on raffine l'intent côté CAP.
 TOOLS_WHITELIST: dict[str, tuple[str, str, bool]] = {
     # Reads (passive, scope_confirmed pas requis)
-    "get_cron_jobs": ("GET", "/api/cron/settings/searchJobs", False),
+    "list_cron_jobs": ("GET", "/api/cron/settings/searchJobs", False),
+    "get_cron_jobs": ("GET", "/api/cron/settings/searchJobs", False),       # alias
+    "diagnostics_cron": ("GET", "/api/cron/settings/searchJobs", False),    # alias vu en sortie LoRA
     "list_firewall_rules": ("GET", "/api/firewall/filter/get", False),
     "list_nat_rules": ("GET", "/api/firewall/source_nat/get", False),
     "list_wg_peers": ("GET", "/api/wireguard/server/get", False),
     "system_status": ("GET", "/api/diagnostics/system/system_information", False),
+    "get_system_information": ("GET", "/api/diagnostics/system/system_information", False),
     # Mutating (scope_confirmed obligatoire)
     "block_ip": ("POST", "/api/firewall/filter/addRule", True),
     "schedule_cron_job": ("POST", "/api/cron/settings/addJob", True),
@@ -79,26 +87,26 @@ class CAPPacket:
     scope_confirmed: bool = False
 
     def to_messages(self) -> list[dict[str, Any]]:
-        """Convertit le CAP en messages OpenAI-style pour llama-server."""
+        """Convertit le CAP en messages OpenAI-style pour llama-server.
+
+        Format aligné sur ce sur quoi le LoRA opnsense-agent-phi35 a été
+        entraîné : system prompt court + user.content en TEXTE NATUREL
+        (pas JSON CAP). C'est ce qui produit le mieux des `tool_calls`
+        structurés du modèle (sinon il a tendance à répondre en texte
+        listant les noms d'outils candidats).
+        """
         return [
             {
                 "role": "system",
                 "content": (
-                    "You are an OPNsense agent. Given a CAP v1 packet, "
-                    "return EXACTLY ONE tool_call from the whitelist that "
-                    "fulfills the directive. No prose, no markdown."
+                    "You are an OPNsense agent. Choose the correct tool "
+                    "from the provided list and call it with appropriate "
+                    "arguments to fulfill the user's request."
                 ),
             },
             {
                 "role": "user",
-                "content": json.dumps(
-                    {
-                        "directive": self.directive,
-                        "entities": self.entities,
-                        "args": self.args,
-                    },
-                    ensure_ascii=False,
-                ),
+                "content": self.directive,
             },
         ]
 
@@ -126,6 +134,24 @@ def call_llama(messages: list[dict[str, Any]], tools: list[dict[str, Any]]) -> d
         return json.loads(resp.read().decode("utf-8"))
 
 
+# Descriptions enrichies (proches de ce qu'a vu le LoRA en training,
+# cf. data/sft/opnsense_train.jsonl côté cyber-agent-engine).
+TOOL_DESCRIPTIONS: dict[str, str] = {
+    "list_cron_jobs": "Get list of all scheduled Cron jobs",
+    "get_cron_jobs": "Get list of all scheduled Cron jobs",
+    "diagnostics_cron": "Get list of all scheduled Cron jobs",
+    "list_firewall_rules": "List all firewall (pf) filter rules",
+    "list_nat_rules": "List all source-NAT (outbound NAT) rules",
+    "list_wg_peers": "List all WireGuard peers configured",
+    "system_status": "Get OPNsense system information (hostname, version, uptime)",
+    "get_system_information": "Get OPNsense system information (hostname, version, uptime)",
+    "block_ip": "Block an IP address by creating a firewall filter rule",
+    "schedule_cron_job": "Schedule a new Cron job",
+    "restart_unbound": "Restart the Unbound DNS resolver service",
+    "restart_suricata": "Restart the Suricata IDS/IPS service",
+}
+
+
 def whitelist_tools() -> list[dict[str, Any]]:
     """Convertit le TOOLS_WHITELIST en schéma OpenAI tools."""
     out = []
@@ -135,7 +161,7 @@ def whitelist_tools() -> list[dict[str, Any]]:
                 "type": "function",
                 "function": {
                     "name": name,
-                    "description": f"OPNsense action {name}",
+                    "description": TOOL_DESCRIPTIONS.get(name, f"OPNsense action {name}"),
                     "parameters": {"type": "object", "properties": {}, "required": []},
                 },
             }
