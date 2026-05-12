@@ -1,21 +1,26 @@
 #!/usr/bin/env bash
 #
 # sync-github.sh — synchronise le `main` GitLab privé vers le mirror
-# public GitHub, en retirant CLAUDE.md de TOUT l'historique git (git
-# filter-repo).
+# public GitHub, en retirant de TOUT l'historique git (git filter-repo) :
 #
-# Pourquoi : CLAUDE.md contient des instructions internes (conventions
-# de commit, override "no AI mentions", etc.) qu'on garde sur le repo
-# privé GitLab mais qu'on n'expose pas publiquement.
+#   - CLAUDE.md                                (conventions internes)
+#   - .sops.yaml                               (config sops, clé age)
+#   - .env.sops                                (env chiffré)
+#   - infra/envs/hcloud/terraform.tfvars.sops  (tfvars chiffré)
+#
+# Pourquoi : ces fichiers ne sont **pas** des secrets en clair (.sops*
+# est chiffré age, .sops.yaml ne contient que des clés publiques), mais
+# on préfère ne pas les exposer sur le mirror public — c'est de la
+# configuration interne au repo privé.
 #
 # Pour les humains :
-#   - Travailler normalement sur `main` (CLAUDE.md inclus).
+#   - Travailler normalement sur `main` (tout inclus).
 #   - `git push` pousse sur GitLab (origin) comme d'habitude.
 #   - Quand tu veux sync GitHub, lance ce script.
 #
 # Le script crée un clone temporaire, applique filter-repo dessus,
 # force-push GitHub, puis nettoie. Le repo principal n'est jamais
-# affecté (CLAUDE.md reste tracké sur main local + GitLab).
+# affecté (les fichiers restent trackés sur main local + GitLab).
 
 set -euo pipefail
 
@@ -41,14 +46,29 @@ git clone --no-local "${REPO_ROOT}" "${TMP_DIR}/repo" 2>&1 | tail -2
 
 cd "${TMP_DIR}/repo"
 
-echo "[sync] filter-repo : retire CLAUDE.md de tout l'historique ..."
-${FILTER} --path CLAUDE.md --invert-paths --force 2>&1 | tail -3
+# Liste des paths à retirer de tout l'historique. Garder synchronisée
+# avec le bloc d'en-tête de ce script.
+EXCLUDE_PATHS=(
+    CLAUDE.md
+    .sops.yaml
+    .env.sops
+    infra/envs/hcloud/terraform.tfvars.sops
+)
 
-echo "[sync] vérification : CLAUDE.md ne doit apparaître nulle part"
-if git log --all --follow -- CLAUDE.md 2>&1 | grep -q .; then
-    echo "ERREUR : CLAUDE.md encore présent dans l'historique" >&2
-    exit 1
-fi
+echo "[sync] filter-repo : retire les ${#EXCLUDE_PATHS[@]} fichiers internes de tout l'historique ..."
+FILTER_ARGS=()
+for p in "${EXCLUDE_PATHS[@]}"; do
+    FILTER_ARGS+=(--path "$p")
+done
+${FILTER} "${FILTER_ARGS[@]}" --invert-paths --force 2>&1 | tail -3
+
+echo "[sync] vérification : aucun des fichiers exclus ne doit apparaître"
+for p in "${EXCLUDE_PATHS[@]}"; do
+    if git log --all --follow -- "$p" 2>&1 | grep -q .; then
+        echo "ERREUR : $p encore présent dans l'historique" >&2
+        exit 1
+    fi
+done
 
 echo "[sync] force-push vers ${GH_URL} ..."
 git remote add github "${GH_URL}"
