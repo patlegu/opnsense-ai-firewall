@@ -1,0 +1,37 @@
+# Terraform
+infra/**/.terraform/
+infra/**/.terraform.lock.hcl
+infra/**/terraform.tfstate
+infra/**/terraform.tfstate.backup
+infra/**/terraform.tfstate.*.backup
+infra/**/terraform.tfvars
+infra/**/terraform.tfvars.bak.*
+infra/**/.terraform.tfstate.lock.info
+infra/**/*.auto.tfvars.json
+
+# Secrets en clair (les .sops chiffrés sont versionnés)
+.env
+.env.bak
+
+# Patterns génériques de backup/résidus
+*.bak
+*.OLD
+*.PLG
+
+# Binaires LLM + modèles GGUF.
+# Pas dans git (trop gros : ~2.5 GB base GGUF + ~500 MB LoRA + ~30 MB binaire).
+# Tofu les download depuis HF / les SCP depuis le poste de travail.
+# Mais on garde les README pour expliquer comment populer ces dossiers.
+gguf/*
+!gguf/README.md
+llama-bin/*
+!llama-bin/README.md
+!llama-bin/freebsd-amd64/
+llama-bin/freebsd-amd64/*
+!llama-bin/freebsd-amd64/README.md
+
+# Python (si scripts ajoutés plus tard)
+__pycache__/
+*.py[cod]
+.venv/
+venv/

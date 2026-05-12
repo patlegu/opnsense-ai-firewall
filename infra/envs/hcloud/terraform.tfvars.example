@@ -1,0 +1,72 @@
+# Copier en terraform.tfvars (gitignore + chiffré sops après) puis remplir.
+
+# ── Topologie ────────────────────────────────────────────────────────────────
+# instance_id  = 1            # CIDR sera 10.1.0.0/24
+# location     = "hel1"
+# network_zone = "eu-central"
+
+# ── OPNsense ─────────────────────────────────────────────────────────────────
+# La VM doit avoir ≥ 8 GB RAM pour faire tourner pf + llama-server (Phi-3 Q4).
+# cx33 = 8 GB ~10€/mois (défaut), cx43 = 16 GB ~25€/mois (recommandé pour
+# baisser la latence d'inférence).
+# opnsense_server_type = "cx33"
+# opnsense_image_url   = "https://mirror.ams1.nl.leaseweb.net/opnsense/releases/26.1.6/OPNsense-26.1.6-nano-amd64.img.bz2"
+# opnsense_api_port    = 4443
+# opnsense_ssh_port    = 2222
+
+# ── Credentials communs ──────────────────────────────────────────────────────
+ssh_public_key = "ssh-ed25519 AAAA... ton-email@host"
+
+# OPTIONNEL : si ta clé SSH publique est DÉJÀ enregistrée côté Hetzner
+# (autre projet *-forge), Hetzner refuse les pubkey dupliquées. Renseigner
+# alors le nom Hetzner exact pour la réutiliser. Voir : hcloud ssh-key list
+# ssh_key_name_existing = "asp-forge-1"
+
+vm_password_hash = "$6$rounds=5000$..."   # openssl passwd -6 'mdp'
+hcloud_token     = ""                     # Hetzner Cloud API token
+
+# ── OPNsense credentials ────────────────────────────────────────────────────
+opnsense_root_hash = "$6$rounds=5000$..."
+
+# Génération API :
+#   KEY=$(openssl rand -hex 40)
+#   SECRET=$(openssl rand -hex 40)
+#   SECRET_HASH=$(openssl passwd -6 "$SECRET")
+opnsense_api_key          = ""               # clé en clair (80 hex)
+opnsense_api_secret       = "$6$rounds$..."  # secret HASHÉ (config.xml)
+opnsense_api_secret_plain = ""               # secret EN CLAIR (calls HTTP locaux)
+
+# ── LLM EMBARQUÉ (in-box) ───────────────────────────────────────────────────
+# Caractéristique de ce repo : llama-server + Phi-3 + LoRA tournent
+# DANS la VM OPNsense, pas dans un sidecar.
+#
+# Prérequis : avoir compilé llama-server pour FreeBSD via
+#   bash scripts/build-llama-freebsd.sh
+# qui produit llama-bin/freebsd-amd64/{llama-server, lib/*.so}.
+#
+# Pour désactiver complètement le LLM (juste un firewall vanilla) :
+# opnsense_llm_enabled = false
+
+opnsense_llm_enabled       = true
+# opnsense_llm_base_url    = "https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-gguf/resolve/main/Phi-3-mini-4k-instruct-q4.gguf"
+# opnsense_llm_lora_url    = "https://huggingface.co/patlegu/opnsense-agent-phi35/resolve/main/opnsense-agent-phi35-q4_k_m.gguf"
+# opnsense_llm_listen_addr = "127.0.0.1"   # JAMAIS 0.0.0.0
+# opnsense_llm_port        = 8080
+# opnsense_llm_ctx_size    = 4096
+
+# ── WireGuard mesh (optionnel) ──────────────────────────────────────────────
+# wg_enabled = false par défaut. Activer si tu veux exposer l'agent local
+# OPNsense via un tunnel WG vers ton poste opérateur.
+#
+# Génération clés serveur OPNsense :
+#   PRIV=$(wg genkey); PUB=$(echo "$PRIV" | wg pubkey)
+# wg_server_privkey = ""
+# wg_server_pubkey  = ""
+
+# ── VMs Debian / LLM sidecar (NON UTILISÉ dans ce repo) ─────────────────────
+# Hérité du kickstart mais désactivé par défaut : ce projet teste
+# explicitement le LLM in-box, pas en sidecar. Si tu peuples ces maps,
+# tu recrées la topologie kickstart-forge — autant utiliser ce repo-là.
+
+debian_vms = {}
+llm_vms    = {}
