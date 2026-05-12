@@ -160,9 +160,14 @@ def call_opnsense(method: str, path: str, body: dict[str, Any] | None = None) ->
         "Authorization": "Basic " + base64.b64encode(
             f"{OPNSENSE_KEY}:{OPNSENSE_SECRET}".encode()
         ).decode(),
-        "Content-Type": "application/json",
     }
-    data = json.dumps(body).encode("utf-8") if body else None
+    # Content-Type seulement si on envoie un body. OPNsense renvoie
+    # HTTP 400 sur un GET qui porte Content-Type: application/json sans
+    # body associé (alors que curl sans `-d` n'envoie pas ce header → 200).
+    data = None
+    if body is not None:
+        data = json.dumps(body).encode("utf-8")
+        headers["Content-Type"] = "application/json"
     # 127.0.0.1 → cert self-signed accepté.
     ctx = ssl.create_default_context()
     ctx.check_hostname = False
