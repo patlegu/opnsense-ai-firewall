@@ -119,17 +119,20 @@ if [ -f "${PROJECT_DIR}/.env" ]; then
 fi
 GITLAB_PAT_CLEAN="${GITLAB_PAT:-${TF_HTTP_PASSWORD:-}}"
 
-# ── 0. SSH public key ───────────────────────────────────────────────────────
-echo "── SSH public key ──"
+# ── 0. SSH public keys ──────────────────────────────────────────────────────
+# Var Tofu = ssh_public_keys (liste). Le script n'auto-patch PAS la liste
+# (format HCL multi-lignes pénible à manipuler avec sed). On affiche juste
+# la clé locale pour que l'opérateur la copie/colle dans tfvars.
+echo "── SSH public keys (à copier dans var.ssh_public_keys) ──"
 if [ -f ~/.ssh/id_ed25519.pub ]; then
-    SSH_PUB=$(cat ~/.ssh/id_ed25519.pub)
+    echo "  ⚠ Coller ceci dans tfvars (en premier dans le tableau) :"
+    echo "      $(cat ~/.ssh/id_ed25519.pub)"
 elif [ -f ~/.ssh/id_rsa.pub ]; then
-    SSH_PUB=$(cat ~/.ssh/id_rsa.pub)
+    echo "  ⚠ Coller ceci dans tfvars (en premier dans le tableau) :"
+    echo "      $(cat ~/.ssh/id_rsa.pub)"
 else
     echo "  ✗ Pas de clé SSH locale (~/.ssh/id_ed25519.pub ou id_rsa.pub)" >&2
-    SSH_PUB=""
 fi
-[ -n "$SSH_PUB" ] && patch_if_placeholder ssh_public_key "$SSH_PUB"
 
 # ── 1. Mots de passe (root OPNsense + user VMs) ─────────────────────────────
 echo

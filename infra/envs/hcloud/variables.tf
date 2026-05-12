@@ -261,7 +261,7 @@ variable "opnsense_llm_ctx_size" {
 }
 
 variable "ssh_private_key_path" {
-  description = "Clé SSH privée locale pour les provisioners du null_resource embedded_llm (SCP binaire + remote-exec). Pas utilisée par les modules iac-modules eux-mêmes (eux passent par cloud-init + clé publique côté Hetzner). Doit correspondre au pendant privé de var.ssh_public_key."
+  description = "Clé SSH privée locale pour les provisioners du null_resource embedded_llm (SCP binaire + remote-exec). Pas utilisée par les modules iac-modules eux-mêmes (eux passent par cloud-init + clé publique côté Hetzner). Doit correspondre au pendant privé de var.ssh_public_keys[0] (la première clé = primaire bootstrap)."
   type        = string
   default     = "~/.ssh/id_ed25519"
 }
@@ -289,9 +289,26 @@ variable "wg_server_pubkey" {
 
 # ── Credentials sensibles ────────────────────────────────────────────────────
 
-variable "ssh_public_key" {
-  description = "Clé SSH publique (authorized_keys root OPNsense + VMs Debian/LLM)"
-  type        = string
+variable "ssh_public_keys" {
+  description = <<-EOT
+    Liste des clés SSH publiques injectées dans authorized_keys root
+    d'OPNsense (et VMs Debian/LLM si activées). La PREMIÈRE entrée sert
+    aussi pour le bootstrap (rescue mode Hetzner) — elle doit avoir son
+    pendant privé sur la machine qui fait tofu apply, et matcher la var
+    ssh_private_key_path. Les autres clés sont juste injectées dans
+    authorized_keys post-bootstrap.
+
+    Exemple tfvars :
+      ssh_public_keys = [
+        "ssh-ed25519 AAAA...damask",   # primaire (apply)
+        "ssh-ed25519 AAAA...korrig",   # secondaire (admin)
+      ]
+  EOT
+  type        = list(string)
+  validation {
+    condition     = length(var.ssh_public_keys) > 0
+    error_message = "Au moins une clé SSH publique est requise."
+  }
 }
 
 variable "ssh_key_name_existing" {

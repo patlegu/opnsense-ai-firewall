@@ -15,7 +15,15 @@
 # opnsense_ssh_port    = 2222
 
 # ── Credentials communs ──────────────────────────────────────────────────────
-ssh_public_key = "ssh-ed25519 AAAA... ton-email@host"
+ssh_public_keys = [
+  # PRIMAIRE — sert pour le bootstrap rescue Hetzner. Son pendant privé
+  # doit être sur la machine qui fait `tofu apply` (cf. var.ssh_private_key_path).
+  "ssh-ed25519 AAAA...patlegu@damask",
+  # SECONDAIRE — juste injectée dans authorized_keys d'OPNsense pour
+  # autoriser un autre poste admin (korrig, laptop, etc.). Autant d'entrées
+  # que nécessaire.
+  # "ssh-ed25519 AAAA...root@korrig",
+]
 
 # OPTIONNEL : si ta clé SSH publique est DÉJÀ enregistrée côté Hetzner
 # (autre projet *-forge), Hetzner refuse les pubkey dupliquées. Renseigner

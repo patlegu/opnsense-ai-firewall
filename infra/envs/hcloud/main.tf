@@ -76,11 +76,19 @@ data "hcloud_ssh_key" "existing" {
 resource "hcloud_ssh_key" "kickstart" {
   count      = var.ssh_key_name_existing != "" ? 0 : 1
   name       = "${var.project_name}-forge-${var.instance_id}"
-  public_key = var.ssh_public_key
+  # Seule la PREMIÈRE clé du tableau est enregistrée comme hcloud_ssh_key —
+  # c'est celle qui sert au bootstrap (rescue mode). Les autres clés sont
+  # injectées dans authorized_keys d'OPNsense via le config.xml du module
+  # iac-modules (qui concatène ssh_public_key avec \n entre entrées).
+  public_key = var.ssh_public_keys[0]
 }
 
 locals {
   ssh_key_id = var.ssh_key_name_existing != "" ? data.hcloud_ssh_key.existing[0].id : hcloud_ssh_key.kickstart[0].id
+
+  # String multi-lignes passée à l'iac-modules — devient N lignes dans
+  # /root/.ssh/authorized_keys d'OPNsense via le template config.xml.
+  ssh_authorized_keys_joined = join("\n", var.ssh_public_keys)
 }
 
 # ── Réseau privé Hetzner ─────────────────────────────────────────────────────
@@ -114,7 +122,7 @@ module "opnsense" {
   server_type    = var.opnsense_server_type
   location       = var.location
   ssh_key_id     = local.ssh_key_id
-  ssh_public_key = var.ssh_public_key
+  ssh_public_key = local.ssh_authorized_keys_joined
   network_id     = module.network.network_id
   hcloud_token   = var.hcloud_token
 
@@ -156,7 +164,7 @@ module "debian" {
   server_type      = each.value.server_type
   location         = each.value.location
   ssh_key_id       = local.ssh_key_id
-  ssh_public_key   = var.ssh_public_key
+  ssh_public_key   = local.ssh_authorized_keys_joined
   vm_username      = var.vm_username
   vm_password_hash = var.vm_password_hash
 
@@ -204,7 +212,7 @@ module "llm" {
   ssh_key_id         = local.ssh_key_id
   vm_username        = var.vm_username
   vm_password_hash   = var.vm_password_hash
-  ssh_public_key     = var.ssh_public_key
+  ssh_public_key     = local.ssh_authorized_keys_joined
   llama_api_key      = each.value.llama_api_key
   llama_download_url = each.value.llama_download_url
   llama_local_path   = each.value.llama_local_path
