@@ -24,7 +24,18 @@ propre API depuis l'intérieur de la VM. **Pas de sidecar.**
 
 Démo détaillée et logs de test : [`docs/demo-results.md`](docs/demo-results.md).
 
-Forked from [kickstart-forge](https://gitlab.com/llm_tests/kickstart-forge).
+Forked from `kickstart-forge` (template Hetzner Cloud privé).
+
+> **Note publique GitHub** : ce repo dépend du module Tofu interne
+> `iac-modules` (hébergé en privé sur GitLab) pour les modules
+> `hcloud/{network,opnsense,debian,agent}` + `wireguard-mesh`. Sans
+> accès à ce module, `tofu apply` ne tourne pas. Le repo est publié
+> comme **démonstration de pattern** (LLM in-box + agent local +
+> tool-calling vers l'API OPNsense), pas comme une infra
+> reproductible clés-en-main. Pour reproduire intégralement, adapter
+> les `source = "git::ssh://..."` du `main.tf` vers tes propres
+> modules Tofu (les contrats d'interface sont documentés dans
+> `infra/envs/hcloud/variables.tf`).
 
 ## Topologie
 
@@ -122,9 +133,10 @@ Ce repo **n'essaie pas** :
   juste un garde-fou opérateur).
 
 Si tu cherches cette topologie en production, regarde plutôt
-[asp-forge](https://gitlab.com/llm_tests/asp-forge) ou
-[purpleteam-forge](https://gitlab.com/llm_tests/purpleteam-forge) :
-sidecar VM dédiée + OPNsense vanilla.
+les patterns "sidecar VM dédiée + OPNsense vanilla" — bien plus sain.
+Quelques implémentations existent (privées) dans l'écosystème
+`*-forge` interne ; le pattern public se résume à : VM Debian avec
+llama-server, plus un agent Python qui parle à l'API OPNsense via HTTPS.
 
 ## Documentation
 
@@ -139,8 +151,8 @@ sidecar VM dédiée + OPNsense vanilla.
 
 ## Origine
 
-Spawné depuis [kickstart-forge](https://gitlab.com/llm_tests/kickstart-forge)
-avec la convention `*-forge` (préfixe 3 lettres = `oaf`). Tout ce
+Spawné depuis `kickstart-forge` (template interne) avec la convention
+`*-forge` (préfixe 3 lettres = `oaf`). Tout ce
 qui n'est pas spécifique au LLM in-box vient du kickstart ; ce qui
 est spécifique vit dans `docs/embedded-llm.md` et les variables
 `opnsense_llm_*`.

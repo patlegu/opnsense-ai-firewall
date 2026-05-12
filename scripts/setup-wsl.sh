@@ -244,8 +244,8 @@ echo "  Stratégie par défaut : les VMs Hetzner téléchargent depuis GitLab"
 echo "  Generic Packages (uploadés via scripts/upload-llm-assets.sh)."
 echo "  → Pas besoin de 2.5 GB de fichiers sur ce poste."
 echo
-echo "  Vérifier que l'upload GitLab est OK :"
-echo "    https://gitlab.com/llm_tests/kickstart-forge/-/packages"
+echo "  Vérifier que l'upload GitLab Generic Packages est OK :"
+echo "    https://<TON_GITLAB>/<NAMESPACE>/<PROJET>/-/packages"
 echo
 echo "  Si tu veux uploader/re-uploader les fichiers, depuis <LIBVIRT_HOST> (où ils existent) :"
 echo "    GITLAB_PAT=glpat-... bash scripts/upload-llm-assets.sh"

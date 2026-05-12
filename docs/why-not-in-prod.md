@@ -100,6 +100,8 @@ Ce repo a **trois usages valides** :
    patterns d'agent in-box.
 
 Et **aucun usage en prod**. Si tu veux ce concept en vrai, regarde
-[asp-forge](https://gitlab.com/llm_tests/asp-forge) ou
-[purpleteam-forge](https://gitlab.com/llm_tests/purpleteam-forge) :
-LLM sur sidecar VM, OPNsense vanilla, API gateway audité.
+les patterns sidecar : LLM sur VM dédiée distincte d'OPNsense, OPNsense
+vanilla, API gateway audité entre les deux. Quelques implémentations
+internes (privées) existent dans l'écosystème `*-forge` ; le pattern
+public se reproduit en ~50 lignes de Tofu + un container llama-server
+sur une VM Debian séparée.
