@@ -149,7 +149,8 @@ les variables et redéployer.
 
 - **Latence d'inférence sur cx33 (8 GB shared)** : ~2-4 s pour le
   prompt processing initial, puis ~7-10 tokens/s en génération. Une
-  intent admin = ~5-15 s total. Pas adapté pour des décisions
+  intent admin = **~10 s total** mesuré en démo (cf.
+  [`demo-results.md`](demo-results.md)). Pas adapté pour des décisions
   temps-réel pf — c'est de l'aide à l'admin.
 - **Contention CPU** : pendant l'inférence, les 4 vCPU sont saturés.
   Le routage pf prend de la latence mesurable (cf. palier E pour les

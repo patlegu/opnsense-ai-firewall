@@ -10,6 +10,20 @@ propre API depuis l'intérieur de la VM. **Pas de sidecar.**
 > cycle de vie, audit). Le but de ce repo est de **mesurer** à quel
 > point c'est une mauvaise idée et où sont les seuils.
 
+## Statut — proof-of-concept validée (mai 2026)
+
+| Composant | Statut |
+| --- | --- |
+| llama-server natif FreeBSD | ✅ Build b9000 (cf. [`docs/build-logs/`](docs/build-logs/)) |
+| Service rc.d `llama` | ✅ Bind strict `127.0.0.1:8080`, daemon(8) |
+| Agent local `oaf-agent` | ✅ Python 3.13, wrapper `/usr/local/bin/oaf-agent` |
+| Chaîne intent → tool_call → API (read) | ✅ `oaf-agent ask "Show system information"` → JSON OPNsense |
+| Chaîne intent → tool_call → API (write) | ✅ `oaf-agent ask "Block IP 1.2.3.4 on WAN" --confirm` → règle pf créée avec UUID |
+| Latence intent → réponse | ~10 s sur cx33 (4 vCPU CPU-only) |
+| Couverture TOOLS_WHITELIST | 15 / 102 fonctions du LoRA (élargissable, cf. `agents/opnsense/_*.py` du training repo) |
+
+Démo détaillée et logs de test : [`docs/demo-results.md`](docs/demo-results.md).
+
 Forked from [kickstart-forge](https://gitlab.com/llm_tests/kickstart-forge).
 
 ## Topologie
