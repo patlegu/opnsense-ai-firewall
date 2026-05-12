@@ -7,6 +7,8 @@
 #   - .sops.yaml                               (config sops, clé age)
 #   - .env.sops                                (env chiffré)
 #   - infra/envs/hcloud/terraform.tfvars.sops  (tfvars chiffré)
+#   - scripts/upload-llm-assets.sh             (workflow GitLab interne)
+#   - scripts/generate-tools-catalog.py        (dépend du repo training privé)
 #
 # Pourquoi : ces fichiers ne sont **pas** des secrets en clair (.sops*
 # est chiffré age, .sops.yaml ne contient que des clés publiques), mais
@@ -53,6 +55,10 @@ EXCLUDE_PATHS=(
     .sops.yaml
     .env.sops
     infra/envs/hcloud/terraform.tfvars.sops
+    # Scripts qui dépendent d'infra/repos privés — inutilisables côté
+    # public, donc on ne les expose pas.
+    scripts/upload-llm-assets.sh           # GitLab Generic Packages
+    scripts/generate-tools-catalog.py      # repo training privé
 )
 
 echo "[sync] filter-repo : retire les ${#EXCLUDE_PATHS[@]} fichiers internes de tout l'historique ..."
