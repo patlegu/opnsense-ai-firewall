@@ -366,14 +366,17 @@ resource "null_resource" "embedded_llm" {
     timeout     = "5m"
   }
 
-  # 1. Préparer l'arborescence /var/llm/{bin,lib,models,agent} +
-  #    s'assurer que python3 est installé (l'agent local en a besoin).
-  #    `pkg` est dans OPNsense ; python3 est en pkg "python311" (ou
-  #    fallback "python3") et un symlink /usr/local/bin/python3 doit
-  #    pointer dessus.
+  # 1. Préparer l'arborescence + arrêter llama si en cours (sinon le SCP
+  #    du binaire échoue avec ETXTBSY — FreeBSD refuse d'écraser un
+  #    exécutable en cours d'exécution). On retire aussi les libs pour
+  #    éviter de mélanger ancien build et nouveau (different SONAMEs
+  #    possibles entre tags llama.cpp).
   provisioner "remote-exec" {
     inline = [
       "mkdir -p /var/llm/bin /var/llm/lib /var/llm/models /var/llm/agent /var/log/llama",
+      "service llama stop 2>/dev/null || true",
+      "rm -f /var/llm/bin/llama-server",
+      "rm -rf /var/llm/lib/*",
       "command -v python3 >/dev/null 2>&1 || pkg install -y python311 || pkg install -y python3",
     ]
   }
