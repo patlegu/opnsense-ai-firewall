@@ -35,6 +35,7 @@ import argparse
 import json
 import logging
 import os
+import re
 import sys
 import urllib.request
 import urllib.error
@@ -152,6 +153,42 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
 }
 
 
+def extract_tool_calls_from_content(content: str) -> list[dict[str, Any]]:
+    """Extrait les tool_calls encapsulés dans des special tokens Phi-3.
+
+    Le LoRA `opnsense-agent-phi35` a été entraîné avec un format custom
+    où le tool_call est encadré par `<|tool_calls|>...<|tool_response|>`
+    dans le content du message assistant. Le chat template par défaut de
+    llama-server ne sait pas extraire ces tokens vers le champ structuré
+    `message.tool_calls`, donc on parse manuellement le content.
+
+    Format vu en production :
+
+        <|tool_calls|>
+        [{"id": "call_xxx", "type": "function",
+          "function": {"name": "get_cron_jobs", "arguments": "{}"}}]
+        <|tool_response|>
+        ...
+
+    Retourne la liste des tool_calls trouvés (en général 1), ou liste
+    vide si aucun match.
+    """
+    # On capture le JSON entre <|tool_calls|> et le prochain marker
+    # (<|tool_response|> ou fin du content).
+    pattern = re.compile(
+        r"<\|tool_calls\|>\s*(\[.*?\])\s*(?:<\|tool_response\|>|$)",
+        re.DOTALL,
+    )
+    m = pattern.search(content)
+    if not m:
+        return []
+    try:
+        calls = json.loads(m.group(1))
+        return calls if isinstance(calls, list) else []
+    except json.JSONDecodeError:
+        return []
+
+
 def whitelist_tools() -> list[dict[str, Any]]:
     """Convertit le TOOLS_WHITELIST en schéma OpenAI tools."""
     out = []
@@ -228,6 +265,17 @@ def run_intent(intent: str, scope_confirmed: bool = False) -> int:
         return 2
 
     tool_calls = message.get("tool_calls") or []
+
+    # Fallback : le LoRA opnsense-agent-phi35 produit ses tool_calls dans
+    # le content via les special tokens <|tool_calls|>...<|tool_response|>
+    # (format training Phi-3). llama-server ne les extrait pas en
+    # message.tool_calls, donc on parse manuellement.
+    if not tool_calls:
+        parsed = extract_tool_calls_from_content(message.get("content") or "")
+        if parsed:
+            tool_calls = parsed
+            logger.info("tool_call extrait du content via special tokens")
+
     if not tool_calls:
         logger.warning("pas de tool_call retourné ; réponse texte :")
         print(message.get("content") or "(vide)")
