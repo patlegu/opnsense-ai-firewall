@@ -22,7 +22,7 @@ that drives its own REST API from *inside* the VM. **No sidecar.**
 | Intent → tool_call → API (read) | ✅ `oaf-agent ask "Show system information"` → OPNsense JSON |
 | Intent → tool_call → API (write) | ✅ `oaf-agent ask "Block IP 1.2.3.4 on WAN" --confirm` → pf rule created with UUID |
 | Intent → response latency | ~10 s on cx33 (4 vCPU CPU-only) |
-| `TOOLS_CATALOG` coverage | 72 / ~370 LoRA-known functions (extensible via overrides; see `agents/opnsense/_*.py` in the training repo) |
+| `TOOLS_CATALOG` coverage | **101 / 102** canonical functions (verify v7) dispatched: 97 auto-resolved via `scripts/generate-tools-catalog.py` + 4 local overrides; only `import_alias` remains (no native OPNsense REST endpoint) |
 
 Detailed demo and test logs: [`docs/demo-results.md`](docs/demo-results.md).
 

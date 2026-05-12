@@ -164,6 +164,12 @@ TOOLS_LOCAL_OVERRIDES: dict[str, tuple[str, str, bool]] = {
     "list_wg_peers": ("GET", "/api/wireguard/server/get", False),
     "system_status": ("GET", "/api/diagnostics/system/system_information", False),
     "get_system_information": ("GET", "/api/diagnostics/system/system_information", False),
+    # Combler les 5 canoniques sans mapping client (CANONICAL_UNMAPPED) :
+    "get_system_status": ("GET", "/api/diagnostics/system/system_information", False),
+    "backup_configuration": ("GET", "/api/core/backup/download/this", False),
+    "create_restore_point": ("POST", "/api/core/firmware/savepoint", True),  # alias logique sur savepoint
+    "move_filter_rule": ("POST", "/api/firewall/filter/moveRule/{uuid}", True),  # endpoint observé sur 26.x
+    # import_alias : pas d'endpoint REST natif, à composer si vraiment besoin
     "list_firewall_states": ("GET", "/api/diagnostics/firewall/pf_states", False),
     "block_ip": ("POST", "/api/firewall/filter/addRule", True),
     "restart_unbound": ("POST", "/api/unbound/service/restart", True),
