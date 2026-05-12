@@ -306,9 +306,9 @@ module "wireguard_mesh" {
 # (palier B). Sinon, tofu apply fail-fast avec un message lisible.
 
 locals {
-  llm_bin_path   = "${path.module}/../../../llama-bin/freebsd-amd64/llama-server"
-  llm_libs_path  = "${path.module}/../../../llama-bin/freebsd-amd64/lib"
-  llm_agent_path = "${path.module}/../../../agent/oaf_agent.py"
+  llm_bin_path     = "${path.module}/../../../llama-bin/freebsd-amd64/llama-server"
+  llm_libs_tarball = "${path.module}/../../../llama-bin/freebsd-amd64/lib.tar.gz"
+  llm_agent_path   = "${path.module}/../../../agent/oaf_agent.py"
 
   llm_rc_script = templatefile("${path.module}/templates/rc-llama.tftpl", {
     listen_addr   = var.opnsense_llm_listen_addr
@@ -335,8 +335,8 @@ resource "null_resource" "check_llama_binary" {
   count = var.opnsense_llm_enabled ? 1 : 0
   lifecycle {
     precondition {
-      condition     = fileexists(local.llm_bin_path)
-      error_message = "Binaire llama-server FreeBSD manquant à ${local.llm_bin_path}. Lancer 'bash scripts/build-llama-freebsd.sh root@<IP_VM_FREEBSD>' d'abord (voir docs/build-llama-freebsd.md), ou désactiver opnsense_llm_enabled=false."
+      condition     = fileexists(local.llm_bin_path) && fileexists(local.llm_libs_tarball)
+      error_message = "Artefacts llama-server FreeBSD manquants. Attendus : ${local.llm_bin_path} ET ${local.llm_libs_tarball}. Lancer 'bash scripts/build-llama-freebsd.sh root@<IP_VM_FREEBSD>' d'abord (voir docs/build-llama-freebsd.md), ou désactiver opnsense_llm_enabled=false."
     }
   }
 }
@@ -347,6 +347,7 @@ resource "null_resource" "embedded_llm" {
   # Re-trigger si le binaire local change OU si les paramètres LLM changent.
   triggers = {
     binary_md5    = filemd5(local.llm_bin_path)
+    libs_md5      = filemd5(local.llm_libs_tarball)
     agent_md5     = filemd5(local.llm_agent_path)
     rc_script_sha = sha256(local.llm_rc_script)
     post_inst_sha = sha256(local.llm_post_install)
@@ -387,10 +388,12 @@ resource "null_resource" "embedded_llm" {
     destination = "/var/llm/bin/llama-server"
   }
 
-  # 3. SCP du dossier lib/ (dossier complet, récursif)
+  # 3. SCP du tarball des libs (préserve les chains de symlinks SONAME
+  #    libllama.so → libllama.so.0 → libllama.so.0.0.9000 que le
+  #    provisioner "file" de Terraform/Tofu ne gère pas en mode dossier).
   provisioner "file" {
-    source      = "${local.llm_libs_path}/"
-    destination = "/var/llm/lib"
+    source      = local.llm_libs_tarball
+    destination = "/tmp/llm-libs.tar.gz"
   }
 
   # 4. SCP du rc.d script (rendu depuis template)
@@ -438,9 +441,12 @@ resource "null_resource" "embedded_llm" {
     destination = "/usr/local/bin/oaf-agent"
   }
 
-  # 9. chmod + exécution du post-install (download GGUF + start service + healthcheck)
+  # 9. Extraire les libs + chmod + exécution du post-install (download
+  #    GGUF + start service + healthcheck).
   provisioner "remote-exec" {
     inline = [
+      "tar -C /var/llm/lib -xzf /tmp/llm-libs.tar.gz",
+      "rm /tmp/llm-libs.tar.gz",
       "chmod 600 /etc/oaf-agent.env",
       "chmod +x /var/llm/bin/llama-server /usr/local/etc/rc.d/llama /tmp/post-install-llm.sh /usr/local/bin/oaf-agent",
       "/tmp/post-install-llm.sh",

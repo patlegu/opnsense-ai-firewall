@@ -106,9 +106,15 @@ echo "[build-llama-freebsd] extraction…"
 tar -C "${OUT_DIR}" -xzf "${OUT_DIR}/llama-freebsd-amd64.tar.gz"
 rm "${OUT_DIR}/llama-freebsd-amd64.tar.gz"
 
+# Repack lib/ en tarball — utilisé par le null_resource Tofu pour SCP
+# (le provisioner "file" en mode dossier ne préserve pas les chains de
+# symlinks SONAME libfoo.so → libfoo.so.0 → libfoo.so.0.X.Y).
+echo "[build-llama-freebsd] repack lib.tar.gz pour Tofu…"
+tar -C "${OUT_DIR}/lib" -czf "${OUT_DIR}/lib.tar.gz" .
+
 echo
 echo "✓ Build terminé. Artefacts :"
-ls -lh "${OUT_DIR}/llama-server" "${OUT_DIR}/lib/" 2>/dev/null || true
+ls -lh "${OUT_DIR}/llama-server" "${OUT_DIR}/lib.tar.gz" 2>/dev/null || true
 echo
 echo "Vérifier avec : file ${OUT_DIR}/llama-server"
 echo "Suite : palier C (tofu apply pousse ces fichiers sur OPNsense)."
