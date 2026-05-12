@@ -61,9 +61,20 @@ opnsense_api_secret_plain = ""               # secret EN CLAIR (calls HTTP locau
 # Pour désactiver complètement le LLM (juste un firewall vanilla) :
 # opnsense_llm_enabled = false
 
-opnsense_llm_enabled       = true
-# opnsense_llm_base_url    = "https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-gguf/resolve/main/Phi-3-mini-4k-instruct-q4.gguf"
-# opnsense_llm_lora_url    = "https://huggingface.co/patlegu/opnsense-agent-phi35/resolve/main/opnsense-agent-phi35-q4_k_m.gguf"
+opnsense_llm_enabled = true
+
+# Par défaut, on utilise le GGUF mergé patlegu/opnsense-agent-phi35
+# (base Phi-3 + LoRA déjà fusionnés en un seul fichier ~2.4 GB) :
+# pas besoin de --lora à passer à llama-server, plus simple.
+# opnsense_llm_base_url      = "https://huggingface.co/patlegu/opnsense-agent-phi35/resolve/main/opnsense-agent-phi35-q4_k_m.gguf"
+# opnsense_llm_base_filename = "opnsense-agent-phi35-q4_k_m.gguf"
+
+# Si tu as un LoRA séparé converti en GGUF (cf. convert_lora_to_gguf.py
+# du repo llama.cpp), tu peux le superposer à une base Phi-3 brute en
+# renseignant ces deux-là — sinon laisser vide.
+# opnsense_llm_lora_url      = ""
+# opnsense_llm_lora_filename = ""
+
 # opnsense_llm_listen_addr = "127.0.0.1"   # JAMAIS 0.0.0.0
 # opnsense_llm_port        = 8080
 # opnsense_llm_ctx_size    = 4096

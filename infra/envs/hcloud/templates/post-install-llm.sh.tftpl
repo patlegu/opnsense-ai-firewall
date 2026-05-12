@@ -37,23 +37,27 @@ if [ ! -f "/var/llm/models/$${LLM_BASE_FILENAME}" ]; then
     fetch --no-verify-hostname -o "/var/llm/models/$${LLM_BASE_FILENAME}" "$${LLM_BASE_URL}"
 fi
 
-if [ ! -f "/var/llm/models/$${LLM_LORA_FILENAME}" ]; then
-    echo "[post-install-llm] download lora $${LLM_LORA_FILENAME}..."
-    fetch --no-verify-hostname -o "/var/llm/models/$${LLM_LORA_FILENAME}" "$${LLM_LORA_URL}"
+# LoRA séparé : optionnel. Vide = on n'utilise que le model "base" (qui
+# peut déjà être un merged base+LoRA, cas du défaut patlegu/opnsense-agent-phi35).
+if [ -n "$${LLM_LORA_URL}" ] && [ -n "$${LLM_LORA_FILENAME}" ]; then
+    if [ ! -f "/var/llm/models/$${LLM_LORA_FILENAME}" ]; then
+        echo "[post-install-llm] download lora $${LLM_LORA_FILENAME}..."
+        fetch --no-verify-hostname -o "/var/llm/models/$${LLM_LORA_FILENAME}" "$${LLM_LORA_URL}"
+    fi
 fi
 
 # ── 3. Vérification rapide des tailles (sanité, pas crypto) ─────────────
 BASE_BYTES=$(stat -f %z "/var/llm/models/$${LLM_BASE_FILENAME}" 2>/dev/null || echo 0)
-LORA_BYTES=$(stat -f %z "/var/llm/models/$${LLM_LORA_FILENAME}" 2>/dev/null || echo 0)
 if [ "$${BASE_BYTES}" -lt 1000000000 ]; then
     echo "[post-install-llm] base trop petit ($${BASE_BYTES} B), download échoué ?" >&2
     exit 1
 fi
-if [ "$${LORA_BYTES}" -lt 100000000 ]; then
-    echo "[post-install-llm] lora trop petit ($${LORA_BYTES} B), download échoué ?" >&2
-    exit 1
+if [ -n "$${LLM_LORA_FILENAME}" ] && [ -f "/var/llm/models/$${LLM_LORA_FILENAME}" ]; then
+    LORA_BYTES=$(stat -f %z "/var/llm/models/$${LLM_LORA_FILENAME}" 2>/dev/null || echo 0)
+    echo "[post-install-llm] base=$${BASE_BYTES} bytes  lora=$${LORA_BYTES} bytes"
+else
+    echo "[post-install-llm] base=$${BASE_BYTES} bytes  (pas de LoRA séparé)"
 fi
-echo "[post-install-llm] base=$${BASE_BYTES} bytes  lora=$${LORA_BYTES} bytes"
 
 # ── 4. Démarrer / redémarrer le service llama ───────────────────────────
 chmod +x /usr/local/etc/rc.d/llama

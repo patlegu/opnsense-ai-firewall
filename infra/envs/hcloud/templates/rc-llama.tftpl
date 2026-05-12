@@ -26,45 +26,45 @@ llama_enable="YES"
 LLM_BIN="/var/llm/bin/llama-server"
 LLM_LIBS="/var/llm/lib"
 LLM_MODEL="/var/llm/models/${base_filename}"
-LLM_LORA="/var/llm/models/${lora_filename}"
+LLM_LORA_PATH="${lora_filename != "" ? "/var/llm/models/${lora_filename}" : ""}"
 LLM_LISTEN="${listen_addr}"
 LLM_PORT="${port}"
 LLM_CTX="${ctx_size}"
 LLM_LOG="/var/log/llama/server.log"
 LLM_PIDFILE="/var/run/llama.pid"
 
-pidfile="$${LLM_PIDFILE}"
+# rc.subr pidfile (différent de LLM_PIDFILE pour clarifier le scope).
+pidfile="$LLM_PIDFILE"
+
+# Compose la ligne d'arguments. --lora ajouté uniquement si un LoRA
+# séparé est configuré (LLM_LORA_PATH non vide). Le défaut de ce repo
+# utilise un merged Phi-3+LoRA — pas de --lora à passer.
+LLM_LORA_FLAG=""
+if [ -n "$LLM_LORA_PATH" ]; then
+    LLM_LORA_FLAG="--lora $LLM_LORA_PATH"
+fi
 
 # daemon(8) wrap : crée le PID, redirige stdout/stderr, daemonize.
 command="/usr/sbin/daemon"
-command_args="-P $${pidfile} -o $${LLM_LOG} \
-    -- \
-    env LD_LIBRARY_PATH=$${LLM_LIBS} \
-    $${LLM_BIN} \
-    -m $${LLM_MODEL} \
-    --lora $${LLM_LORA} \
-    --host $${LLM_LISTEN} \
-    --port $${LLM_PORT} \
-    --ctx-size $${LLM_CTX} \
-    --jinja"
+command_args="-P $pidfile -o $LLM_LOG -- env LD_LIBRARY_PATH=$LLM_LIBS $LLM_BIN -m $LLM_MODEL $LLM_LORA_FLAG --host $LLM_LISTEN --port $LLM_PORT --ctx-size $LLM_CTX --jinja"
 
 start_precmd="llama_precmd"
 
 llama_precmd() {
     mkdir -p /var/log/llama /var/llm/models /var/llm/bin /var/llm/lib
-    if [ ! -x "$${LLM_BIN}" ]; then
-        echo "[llama] binaire introuvable : $${LLM_BIN}" >&2
+    if [ ! -x "$LLM_BIN" ]; then
+        echo "[llama] binaire introuvable : $LLM_BIN" >&2
         return 1
     fi
-    if [ ! -f "$${LLM_MODEL}" ]; then
-        echo "[llama] modèle base introuvable : $${LLM_MODEL}" >&2
+    if [ ! -f "$LLM_MODEL" ]; then
+        echo "[llama] modèle introuvable : $LLM_MODEL" >&2
         return 1
     fi
-    if [ ! -f "$${LLM_LORA}" ]; then
-        echo "[llama] LoRA introuvable : $${LLM_LORA}" >&2
+    if [ -n "$LLM_LORA_PATH" ] && [ ! -f "$LLM_LORA_PATH" ]; then
+        echo "[llama] LoRA introuvable : $LLM_LORA_PATH" >&2
         return 1
     fi
 }
 
-load_rc_config "$$name"
-run_rc_command "$$1"
+load_rc_config "$name"
+run_rc_command "$1"

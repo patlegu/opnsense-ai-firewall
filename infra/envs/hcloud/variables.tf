@@ -223,27 +223,37 @@ variable "opnsense_llm_enabled" {
 }
 
 variable "opnsense_llm_base_url" {
-  description = "URL HTTPS pour télécharger la base Phi-3 mini GGUF (Q4_K_M recommandé). Hugging Face direct ou miroir interne."
-  type        = string
-  default     = "https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-gguf/resolve/main/Phi-3-mini-4k-instruct-q4.gguf"
-}
-
-variable "opnsense_llm_base_filename" {
-  description = "Nom de fichier local pour la base GGUF (path effectif /var/llm/base.gguf <- ce filename)."
-  type        = string
-  default     = "phi-3-mini-4k-q4.gguf"
-}
-
-variable "opnsense_llm_lora_url" {
-  description = "URL HTTPS pour télécharger le LoRA OPNsense (GGUF, déjà converti pour llama-server)."
+  description = <<-EOT
+    URL HTTPS pour télécharger le GGUF principal — soit la base Phi-3
+    seule, soit le merged Phi-3+LoRA. Le défaut pointe sur le merged
+    `patlegu/opnsense-agent-phi35` qui embarque déjà l'adapter
+    (équivaut à base + --lora en un fichier, plus simple).
+  EOT
   type        = string
   default     = "https://huggingface.co/patlegu/opnsense-agent-phi35/resolve/main/opnsense-agent-phi35-q4_k_m.gguf"
 }
 
-variable "opnsense_llm_lora_filename" {
-  description = "Nom de fichier local pour le LoRA GGUF."
+variable "opnsense_llm_base_filename" {
+  description = "Nom de fichier local pour le GGUF principal."
   type        = string
-  default     = "opnsense-agent-phi35.gguf"
+  default     = "opnsense-agent-phi35-q4_k_m.gguf"
+}
+
+variable "opnsense_llm_lora_url" {
+  description = <<-EOT
+    URL HTTPS pour télécharger un LoRA GGUF séparé (à appliquer via
+    `--lora` à llama-server). **Vide par défaut** car le merged est
+    utilisé en base. À renseigner uniquement si tu as un adapter LoRA
+    converti au format GGUF.
+  EOT
+  type        = string
+  default     = ""
+}
+
+variable "opnsense_llm_lora_filename" {
+  description = "Nom de fichier local pour le LoRA GGUF (ignoré si opnsense_llm_lora_url vide)."
+  type        = string
+  default     = ""
 }
 
 variable "opnsense_llm_server_binary" {
