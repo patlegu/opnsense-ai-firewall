@@ -344,7 +344,9 @@ resource "null_resource" "check_llama_binary" {
 resource "null_resource" "embedded_llm" {
   count = var.opnsense_llm_enabled ? 1 : 0
 
-  # Re-trigger si le binaire local change OU si les paramètres LLM changent.
+  # Re-trigger si le binaire local change OU si les paramètres LLM
+  # changent OU si les credentials API OPNsense changent (cas de rotation
+  # ou de décommentage des vars dans tfvars).
   triggers = {
     binary_md5    = filemd5(local.llm_bin_path)
     libs_md5      = filemd5(local.llm_libs_tarball)
@@ -356,6 +358,11 @@ resource "null_resource" "embedded_llm" {
     listen_addr   = var.opnsense_llm_listen_addr
     port          = var.opnsense_llm_port
     opnsense_ip   = module.opnsense.public_ip
+    # sha256 plutôt que la valeur en clair : évite que le secret API
+    # n'apparaisse dans le state Tofu en clair (le state contient déjà
+    # le secret via var.opnsense_api_secret_plain qui est `sensitive=true`,
+    # mais ne pas dupliquer ici).
+    api_creds_sha = sha256("${var.opnsense_api_key}:${var.opnsense_api_secret_plain}")
   }
 
   connection {
