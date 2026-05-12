@@ -26,6 +26,28 @@ output "debian_vms" {
   }
 }
 
+output "opnsense_api_user" {
+  description = "Username OPNsense porteur de l'API key (cf. iac-modules/hcloud/opnsense — group admins, priv page-all)."
+  value       = "breachsim"
+}
+
+output "opnsense_api_key" {
+  description = "Clé API OPNsense (en clair). Récupérer via `tofu output -raw opnsense_api_key`."
+  value       = var.opnsense_api_key
+  sensitive   = true
+}
+
+output "opnsense_api_secret" {
+  description = "Secret API OPNsense (en clair). Récupérer via `tofu output -raw opnsense_api_secret`."
+  value       = var.opnsense_api_secret_plain
+  sensitive   = true
+}
+
+output "opnsense_api_endpoint" {
+  description = "URL HTTPS de l'API OPNsense (depuis l'extérieur)."
+  value       = "https://${module.opnsense.public_ip}:${var.opnsense_api_port}"
+}
+
 output "embedded_llm" {
   description = "Statut du LLM embarqué dans OPNsense."
   value = var.opnsense_llm_enabled ? {
