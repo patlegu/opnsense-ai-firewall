@@ -22,7 +22,7 @@ propre API depuis l'intérieur de la VM. **Pas de sidecar.**
 | Chaîne intent → tool_call → API (read) | ✅ `oaf-agent ask "Show system information"` → JSON OPNsense |
 | Chaîne intent → tool_call → API (write) | ✅ `oaf-agent ask "Block IP 1.2.3.4 on WAN" --confirm` → règle pf créée avec UUID |
 | Latence intent → réponse | ~10 s sur cx33 (4 vCPU CPU-only) |
-| Couverture TOOLS_WHITELIST | 15 / 102 fonctions du LoRA (élargissable, cf. `agents/opnsense/_*.py` du training repo) |
+| Couverture `TOOLS_CATALOG` | 72 / ~370 fonctions du LoRA dispatchées (auto-générées via `scripts/generate-tools-catalog.py` depuis le repo training, extensibles via `TOOLS_LOCAL_OVERRIDES` au cas par cas) |
 
 Démo détaillée et logs de test : [`docs/demo-results.md`](docs/demo-results.md).
 
