@@ -313,9 +313,15 @@ variable "vm_password_hash" {
 }
 
 variable "hcloud_token" {
-  description = "Token API Hetzner Cloud (Read+Write — requis pour rescue mode + serveurs)"
+  description = <<-EOT
+    Token API Hetzner Cloud (scope Read+Write — requis pour rescue mode +
+    serveurs). Laisser vide pour que le provider hcloud lise la variable
+    d'environnement HCLOUD_TOKEN à la place (chargée depuis .env via
+    `set -a && . .env && set +a`).
+  EOT
   type        = string
   sensitive   = true
+  default     = ""
 }
 
 variable "opnsense_root_hash" {

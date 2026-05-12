@@ -52,9 +52,21 @@ externe lié au LLM (toujours `127.0.0.1`). L'agent local et
 # 1. Cloner + secrets
 git clone git@gitlab.com:llm_tests/opnsense-ai-firewall.git
 cd opnsense-ai-firewall
+
+# 1a. .env à la racine — HCLOUD_TOKEN obligatoire, TF_HTTP_* si backend
+#     GitLab Managed Terraform State activé.
+cat > .env <<'EOF'
+HCLOUD_TOKEN=hcloud_xxxxx
+# TF_HTTP_USERNAME=patlegu
+# TF_HTTP_PASSWORD=glpat-xxx
+EOF
+
+# 1b. tfvars : juste les secrets propres au déploiement (hashes, clé pub,
+#     API OPNsense). hcloud_token n'est PAS requis ici — il sera lu de
+#     l'environnement HCLOUD_TOKEN (cf. 1a).
 cp infra/envs/hcloud/terraform.tfvars.example \
    infra/envs/hcloud/terraform.tfvars
-# (renseigner hcloud_token, ssh_public_key, etc.)
+# Renseigner : ssh_public_key, vm_password_hash, opnsense_root_hash, …
 
 bash scripts/init-secrets.sh --auto
 
@@ -63,6 +75,7 @@ bash scripts/build-llama-freebsd.sh
 # produit llama-bin/freebsd-amd64/{llama-server, lib/*.so}
 
 # 3. Déployer
+set -a && . .env && set +a   # charge HCLOUD_TOKEN dans l'env Tofu
 cd infra/envs/hcloud
 tofu init && tofu apply
 

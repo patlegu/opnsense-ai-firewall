@@ -190,11 +190,13 @@ else
     echo "  ✗ GITLAB_PAT non défini dans .env — skip"
 fi
 
-# ── 6. hcloud_token depuis .env ─────────────────────────────────────────────
+# ── 6. hcloud_token : NE PAS injecter dans tfvars ─────────────────────────
+# Le provider hcloud lit HCLOUD_TOKEN directement de l'environnement
+# (chargé depuis .env via `set -a && . .env && set +a` avant tofu).
+# Pas la peine de dupliquer le secret dans terraform.tfvars.
 if [ -n "${HCLOUD_TOKEN:-}" ]; then
     echo
-    echo "── Hetzner Cloud token ──"
-    patch_if_placeholder hcloud_token "$HCLOUD_TOKEN"
+    echo "── Hetzner Cloud token : présent dans .env, provider hcloud le lira directement"
 fi
 
 # ── Bilan ───────────────────────────────────────────────────────────────────

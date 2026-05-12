@@ -23,7 +23,13 @@ ssh_public_key = "ssh-ed25519 AAAA... ton-email@host"
 # ssh_key_name_existing = "asp-forge-1"
 
 vm_password_hash = "$6$rounds=5000$..."   # openssl passwd -6 'mdp'
-hcloud_token     = ""                     # Hetzner Cloud API token
+
+# hcloud_token : optionnel ici. Le provider hcloud lit HCLOUD_TOKEN de
+# l'environnement (chargé depuis .env à la racine du projet) si la var
+# Tofu est vide. Donc OK de laisser à "" si tu as déjà HCLOUD_TOKEN dans
+# .env. Mettre explicitement ici si tu veux override .env juste pour ce
+# déploiement.
+# hcloud_token = ""
 
 # ── OPNsense credentials ────────────────────────────────────────────────────
 opnsense_root_hash = "$6$rounds=5000$..."

@@ -43,7 +43,11 @@ terraform {
 }
 
 provider "hcloud" {
-  token = var.hcloud_token
+  # Si var.hcloud_token est vide, le provider hcloud lira HCLOUD_TOKEN de
+  # l'environnement (chargé depuis `.env` à la racine via
+  # `set -a && . ../../../.env && set +a`). Évite de dupliquer le secret
+  # dans terraform.tfvars.
+  token = var.hcloud_token != "" ? var.hcloud_token : null
 }
 
 locals {
