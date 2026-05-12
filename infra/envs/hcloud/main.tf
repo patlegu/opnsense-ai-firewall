@@ -408,20 +408,37 @@ resource "null_resource" "embedded_llm" {
     destination = "/var/llm/agent/oaf_agent.py"
   }
 
-  # 7. Wrapper /usr/local/bin/oaf-agent → exécute oaf_agent.py avec python3.
-  #    Permet d'écrire simplement `oaf-agent ask "..."` en CLI.
-  #    Heredoc avec EOF non-quoté pour qu'il soit transmis tel quel.
+  # 7. Fichier d'environnement /etc/oaf-agent.env consommé par le wrapper.
+  #    Contient les credentials API OPNsense (clé + secret en clair) ;
+  #    permissions 0600 root:wheel. Mode read-only une fois en place.
+  provisioner "file" {
+    content     = <<-EOT
+      OAF_LLM_URL=http://${var.opnsense_llm_listen_addr}:${var.opnsense_llm_port}
+      OAF_OPNSENSE_URL=https://127.0.0.1:${var.opnsense_api_port}
+      OAF_OPNSENSE_KEY=${var.opnsense_api_key}
+      OAF_OPNSENSE_SECRET=${var.opnsense_api_secret_plain}
+    EOT
+    destination = "/etc/oaf-agent.env"
+  }
+
+  # 8. Wrapper /usr/local/bin/oaf-agent : source /etc/oaf-agent.env puis
+  #    exécute oaf_agent.py avec python3. Permet d'écrire simplement
+  #    `oaf-agent ask "..."` sans avoir à exporter à la main.
   provisioner "file" {
     content     = <<-EOT
       #!/bin/sh
+      set -a
+      . /etc/oaf-agent.env
+      set +a
       exec /usr/local/bin/python3 /var/llm/agent/oaf_agent.py "$@"
     EOT
     destination = "/usr/local/bin/oaf-agent"
   }
 
-  # 8. chmod + exécution du post-install (download GGUF + start service + healthcheck)
+  # 9. chmod + exécution du post-install (download GGUF + start service + healthcheck)
   provisioner "remote-exec" {
     inline = [
+      "chmod 600 /etc/oaf-agent.env",
       "chmod +x /var/llm/bin/llama-server /usr/local/etc/rc.d/llama /tmp/post-install-llm.sh /usr/local/bin/oaf-agent",
       "/tmp/post-install-llm.sh",
     ]
