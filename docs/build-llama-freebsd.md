@@ -290,6 +290,74 @@ le module `iac-modules/libvirt/freebsd-vm` (à créer en upstream)
 spawne une VM FreeBSD 14 locale gratuite. Procédure plus rapide et
 sans coût Hetzner, mais nécessite le host libvirt.
 
+## Pièges observés (galère réelle)
+
+Compilation de notes prises pendant les tentatives de mai 2026 — à
+consulter avant de relancer la procédure pour gagner du temps.
+
+### 1. La clé SSH "root@damask" enregistrée chez Hetzner ne matchait pas la clé locale
+
+Plusieurs clés ed25519 portant le même nom dans `hcloud ssh-key list`
+viennent de machines distinctes. Vérifier `ssh-keygen -lf
+~/.ssh/id_ed25519.pub` et comparer avec `hcloud ssh-key describe <NOM>`
+**avant** de spawner la VM. Sinon on perd 5 min à recréer.
+
+### 2. `ifconfig_DEFAULT="DHCP"` ne suffit pas sur FreeBSD 14.4
+
+Au reboot post-`zfsinstall`, le réseau ne monte pas si on a seulement
+`ifconfig_DEFAULT="DHCP"`. Utiliser explicitement l'interface
+détectée (`ifconfig vtnet0` sous mfsBSD) :
+
+```sh
+ifconfig_vtnet0="DHCP"
+```
+
+### 3. `PermitRootLogin` par défaut sur FreeBSD bloque SSH par clé
+
+FreeBSD 14.4 ship un `sshd_config` avec `PermitRootLogin no` (ou
+`prohibit-password`). Au reboot, le port 22 répond mais l'auth clé est
+refusée pour root. Ajouter avant le shutdown :
+
+```sh
+sed -i '' 's/^#PermitRootLogin .*/PermitRootLogin yes/' /mnt/etc/ssh/sshd_config
+```
+
+### 4. La rescue Linux Hetzner ne monte pas ZFS facilement
+
+Si on veut éditer le système installé depuis la rescue (parce qu'on
+a oublié un fix avant le reboot), l'install de `zfsutils-linux` dans
+la rescue Debian échoue souvent sur l'acceptation interactive de la
+licence CDDL/GPL. C'est plus rapide de refaire l'install mfsBSD que
+de débugger ça.
+
+### 5. FreeBSD 14.2 disparu du mirror download.freebsd.org
+
+mfsBSD vx.sk ship un kernel 14.2, mais le user-land 14.2 n'est plus
+sur `download.freebsd.org` (cycle de release : seuls n-1/n/n+1 sont
+hébergés). Utiliser **14.4-RELEASE** comme cible `zfsinstall -u`.
+OPNsense 26.1.x est en FreeBSD 14.x donc OK.
+
+### 6. Recommandation : si ça galère, console noVNC
+
+Ouvrir <https://console.hetzner.cloud> → ta VM → "Console" met une
+console série dans le navigateur. Tu vois le boot FreeBSD en direct,
+tu peux corriger via login `mfsroot` ou en single-user. Beaucoup plus
+rapide qu'un script qui poll en aveugle.
+
+### Stratégie validée pour relancer B la prochaine fois
+
+1. `hcloud server create ... --ssh-key claude-shell-local` (clé locale registered).
+2. Rescue + dd mfsBSD → reboot.
+3. SSH mfsBSD (`sshpass -p mfsroot ssh ...`).
+4. `gpart destroy -F /dev/da0 && zfsinstall -d /dev/da0 -u <URL_14.4>`.
+5. **AVANT reboot**, depuis mfsBSD :
+   - `cat >> /mnt/etc/rc.conf` avec `ifconfig_vtnet0="DHCP"`,
+     `hostname`, `sshd_enable="YES"`.
+   - `sed` PermitRootLogin yes dans /mnt/etc/ssh/sshd_config.
+   - copier la pubkey dans `/mnt/root/.ssh/authorized_keys` (chmod 600).
+6. `shutdown -r now`, attendre 60-90 s.
+7. SSH par clé → `bash scripts/build-llama-freebsd.sh root@<IP>`.
+
 ## Pourquoi pas un Docker FreeBSD ?
 
 Les images "FreeBSD" sur Docker Hub tournent via qemu-user-static ou
