@@ -286,6 +286,24 @@ variable "opnsense_llm_ctx_size" {
   default     = 4096
 }
 
+variable "opnsense_llm_tools_blacklist" {
+  description = <<-EOT
+    Liste de tools à BLACKLISTER pour cette instance — l'agent les
+    refuse même si le LoRA les produit. Permet un mode read-only
+    (blacklist tous les `add_*`, `del_*`, `set_*`, `restart_*`) ou un
+    mode démo non disruptif. Par défaut vide (autorise les 102 fonctions
+    du catalog LoRA). Poussée dans /etc/oaf-agent.blacklist sur la VM.
+
+    Exemple :
+      opnsense_llm_tools_blacklist = [
+        "del_static_route", "kill_firewall_states", "flush_firewall_states",
+        "apply_firewall_changes", "revert_firewall_changes",
+      ]
+  EOT
+  type        = list(string)
+  default     = []
+}
+
 variable "ssh_private_key_path" {
   description = "Clé SSH privée locale pour les provisioners du null_resource embedded_llm (SCP binaire + remote-exec). Pas utilisée par les modules iac-modules eux-mêmes (eux passent par cloud-init + clé publique côté Hetzner). Doit correspondre au pendant privé de var.ssh_public_keys[0] (la première clé = primaire bootstrap)."
   type        = string

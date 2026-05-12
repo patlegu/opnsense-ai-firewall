@@ -306,9 +306,10 @@ module "wireguard_mesh" {
 # (palier B). Sinon, tofu apply fail-fast avec un message lisible.
 
 locals {
-  llm_bin_path     = "${path.module}/../../../llama-bin/freebsd-amd64/llama-server"
-  llm_libs_tarball = "${path.module}/../../../llama-bin/freebsd-amd64/lib.tar.gz"
-  llm_agent_path   = "${path.module}/../../../agent/oaf_agent.py"
+  llm_bin_path           = "${path.module}/../../../llama-bin/freebsd-amd64/llama-server"
+  llm_libs_tarball       = "${path.module}/../../../llama-bin/freebsd-amd64/lib.tar.gz"
+  llm_agent_path         = "${path.module}/../../../agent/oaf_agent.py"
+  llm_agent_catalog_path = "${path.module}/../../../agent/tools_catalog.py"
 
   llm_rc_script = templatefile("${path.module}/templates/rc-llama.tftpl", {
     listen_addr   = var.opnsense_llm_listen_addr
@@ -351,6 +352,7 @@ resource "null_resource" "embedded_llm" {
     binary_md5    = filemd5(local.llm_bin_path)
     libs_md5      = filemd5(local.llm_libs_tarball)
     agent_md5     = filemd5(local.llm_agent_path)
+    catalog_md5   = filemd5(local.llm_agent_catalog_path)
     rc_script_sha = sha256(local.llm_rc_script)
     post_inst_sha = sha256(local.llm_post_install)
     base_url      = var.opnsense_llm_base_url
@@ -363,6 +365,7 @@ resource "null_resource" "embedded_llm" {
     # le secret via var.opnsense_api_secret_plain qui est `sensitive=true`,
     # mais ne pas dupliquer ici).
     api_creds_sha = sha256("${var.opnsense_api_key}:${var.opnsense_api_secret_plain}")
+    blacklist_sha = sha256(join(",", var.opnsense_llm_tools_blacklist))
   }
 
   connection {
@@ -415,10 +418,17 @@ resource "null_resource" "embedded_llm" {
     destination = "/tmp/post-install-llm.sh"
   }
 
-  # 6. SCP de l'agent local oaf_agent.py (palier D)
+  # 6. SCP de l'agent local oaf_agent.py + son catalog généré (palier D)
   provisioner "file" {
     source      = local.llm_agent_path
     destination = "/var/llm/agent/oaf_agent.py"
+  }
+
+  # 6bis. tools_catalog.py — auto-généré par scripts/generate-tools-catalog.py
+  # depuis le repo cyber-agent-engine. Importé par oaf_agent.py.
+  provisioner "file" {
+    source      = local.llm_agent_catalog_path
+    destination = "/var/llm/agent/tools_catalog.py"
   }
 
   # 7. Fichier d'environnement /etc/oaf-agent.env consommé par le wrapper.
@@ -432,6 +442,16 @@ resource "null_resource" "embedded_llm" {
       OAF_OPNSENSE_SECRET=${var.opnsense_api_secret_plain}
     EOT
     destination = "/etc/oaf-agent.env"
+  }
+
+  # 7bis. /etc/oaf-agent.blacklist — un nom par ligne, opt-in opérateur.
+  # Vide par défaut. À peupler via var.opnsense_llm_tools_blacklist.
+  provisioner "file" {
+    content     = join("\n", concat(
+      ["# tools blacklist — généré par tofu apply, opt-in via var.opnsense_llm_tools_blacklist"],
+      var.opnsense_llm_tools_blacklist,
+    ))
+    destination = "/etc/oaf-agent.blacklist"
   }
 
   # 8. Wrapper /usr/local/bin/oaf-agent : source /etc/oaf-agent.env puis
@@ -455,6 +475,7 @@ resource "null_resource" "embedded_llm" {
       "tar -C /var/llm/lib -xzf /tmp/llm-libs.tar.gz",
       "rm /tmp/llm-libs.tar.gz",
       "chmod 600 /etc/oaf-agent.env",
+      "chmod 644 /etc/oaf-agent.blacklist",
       "chmod +x /var/llm/bin/llama-server /usr/local/etc/rc.d/llama /tmp/post-install-llm.sh /usr/local/bin/oaf-agent",
       "/tmp/post-install-llm.sh",
     ]

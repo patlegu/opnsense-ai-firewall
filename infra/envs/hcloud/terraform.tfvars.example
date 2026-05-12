@@ -79,6 +79,17 @@ opnsense_llm_enabled = true
 # opnsense_llm_port        = 8080
 # opnsense_llm_ctx_size    = 4096
 
+# Blacklist de tools — opt-in opérateur (push dans /etc/oaf-agent.blacklist).
+# Toute fonction listée ici est refusée par l'agent même si le LoRA la
+# produit. Permet un mode read-only / démo non disruptive. Vide par défaut.
+#
+# Exemple — mode lecture seule (refuse tout mutating) :
+# opnsense_llm_tools_blacklist = [
+#   "block_ip", "del_static_route", "kill_firewall_states",
+#   "flush_firewall_states", "restart_unbound", "restart_suricata",
+#   "apply_firewall_changes", "revert_firewall_changes",
+# ]
+
 # ── WireGuard mesh (optionnel) ──────────────────────────────────────────────
 # wg_enabled = false par défaut. Activer si tu veux exposer l'agent local
 # OPNsense via un tunnel WG vers ton poste opérateur.

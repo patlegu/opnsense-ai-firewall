@@ -110,15 +110,42 @@ déploiement).
 
 ## Garde-fous
 
-### TOOLS_WHITELIST
+### Catalogue + blacklist (au lieu d'une whitelist rigide)
 
-`oaf_agent.py` ne dispatch que les tools listés dans
-`TOOLS_WHITELIST`. Si le LoRA hallucine un autre nom (`delete_everything`,
-etc.), l'agent log un warning et exit avec code 3 — l'API OPNsense
-n'est jamais appelée.
+Trois couches de filtrage côté `oaf_agent.py` :
 
-Pour étendre la whitelist, éditer le dict en tête du fichier — il faut
-le path API exact et flag mutating boolean.
+1. **`TOOLS_CATALOG`** (généré) : noms sur lesquels le LoRA a été
+   entraîné, avec leur `(method, endpoint, mutating)` extraits du repo
+   `cyber-agent-engine`. Produit par `scripts/generate-tools-catalog.py`.
+   ~72 entrées actuellement.
+2. **`TOOLS_LOCAL_OVERRIDES`** (manuel, dans `oaf_agent.py`) : aliases
+   et endpoints non couverts par le catalog auto — observés en sortie
+   LoRA pendant les tests (ex: `diagnostics_cron`,
+   `wireguard_client_get_client_builder`, etc.).
+3. **`TOOLS_BLACKLIST`** (opérateur runtime) : opt-in via env
+   `OAF_BLACKLIST="a,b,c"` ou fichier `/etc/oaf-agent.blacklist` (1
+   nom par ligne). Permet un mode read-only / démo non disruptive sans
+   toucher au code. Tofu peut peupler ce fichier via la variable
+   `opnsense_llm_tools_blacklist`.
+
+Trois codes de sortie distincts au dispatch :
+
+| Code | Sens |
+| --- | --- |
+| `0` | Tool dispatché avec succès |
+| `3` | Tool **inconnu** = hallucination LoRA (hors catalog + overrides) |
+| `5` | Tool blacklisté par l'opérateur |
+| `6` | Tool **connu** du LoRA mais sans endpoint mappé (à ajouter dans `TOOLS_LOCAL_OVERRIDES`) |
+
+L'erreur `6` est utile en debug : elle te dit "le LoRA est cohérent
+mais l'agent a besoin d'une nouvelle entrée d'override".
+
+Pour régénérer le catalog après évolution du training set :
+
+```bash
+bash scripts/generate-tools-catalog.py
+# émet agent/tools_catalog.py — committer le résultat
+```
 
 ### scope_confirmed
 

@@ -50,32 +50,37 @@ OPNSENSE_KEY = os.environ.get("OAF_OPNSENSE_KEY", "")
 OPNSENSE_SECRET = os.environ.get("OAF_OPNSENSE_SECRET", "")
 DEFAULT_TIMEOUT = int(os.environ.get("OAF_TIMEOUT", "120"))
 
-# Liste blanche de tools — n'importe quel autre tool_call est rejeté.
-# Format : nom_outil → (méthode_http, chemin, est_mutating)
+# ── Catalogue des outils ─────────────────────────────────────────────────────
 #
-# Les noms doivent matcher ce sur quoi le LoRA `opnsense-agent-phi35` a été
-# entraîné (cf. data/sft/opnsense_train.jsonl du repo cyber-agent-engine).
-# Quand le LoRA propose un nom hors whitelist (ex: aux1_cron_jobs, etc.),
-# soit on ajoute l'alias ici, soit on raffine l'intent côté CAP.
-TOOLS_WHITELIST: dict[str, tuple[str, str, bool]] = {
-    # Reads (passive, scope_confirmed pas requis)
-    "list_cron_jobs": ("GET", "/api/cron/settings/searchJobs", False),
-    "get_cron_jobs": ("GET", "/api/cron/settings/searchJobs", False),       # alias
-    "diagnostics_cron": ("GET", "/api/cron/settings/searchJobs", False),    # alias vu en sortie LoRA
-    "list_firewall_rules": ("GET", "/api/firewall/filter/get", False),
-    "get_filter_rule": ("GET", "/api/firewall/filter/get", False),                              # alias LoRA
-    "list_nat_rules": ("GET", "/api/firewall/source_nat/get", False),
-    "list_wg_peers": ("GET", "/api/wireguard/server/get", False),
-    "wireguard_client_get_client_builder": ("GET", "/api/wireguard/client/get", False),        # alias LoRA
-    "get_wireguard_clients": ("GET", "/api/wireguard/client/get", False),                       # alias LoRA
-    "system_status": ("GET", "/api/diagnostics/system/system_information", False),
-    "get_system_information": ("GET", "/api/diagnostics/system/system_information", False),
-    # Mutating (scope_confirmed obligatoire)
-    "block_ip": ("POST", "/api/firewall/filter/addRule", True),
-    "schedule_cron_job": ("POST", "/api/cron/settings/addJob", True),
-    "restart_unbound": ("POST", "/api/unbound/service/restart", True),
-    "restart_suricata": ("POST", "/api/ids/service/restart", True),
-}
+# Sémantique :
+#   - CATALOG : noms sur lesquels le LoRA a été entraîné, avec leur
+#     (method, endpoint, mutating). Auto-généré depuis le repo
+#     cyber-agent-engine par scripts/generate-tools-catalog.py.
+#     Tout nom HORS de ce catalog = hallucination → rejet.
+#   - KNOWN_UNMAPPED : noms reconnus par le LoRA mais sans endpoint
+#     mappé côté client OPNsense — l'agent log clairement qu'il connaît
+#     le tool mais ne sait pas le router (à compléter au cas par cas).
+#   - BLACKLIST : opt-in opérateur via env OAF_BLACKLIST="a,b,c" ou
+#     fichier /etc/oaf-agent.blacklist (un nom par ligne). Permet de
+#     restreindre le périmètre runtime (mode read-only, démo non
+#     disruptive…) sans toucher au catalog.
+from tools_catalog import TOOLS_CATALOG, TOOL_DESCRIPTIONS, KNOWN_UNMAPPED  # noqa: E402
+
+
+def _load_blacklist() -> set[str]:
+    """Lit OAF_BLACKLIST (env, csv) + /etc/oaf-agent.blacklist (1/ligne)."""
+    bl: set[str] = set()
+    env = os.environ.get("OAF_BLACKLIST", "")
+    bl.update(n.strip() for n in env.split(",") if n.strip())
+    try:
+        with open("/etc/oaf-agent.blacklist", encoding="utf-8") as f:
+            bl.update(line.strip() for line in f if line.strip() and not line.startswith("#"))
+    except FileNotFoundError:
+        pass
+    return bl
+
+
+TOOLS_BLACKLIST: set[str] = _load_blacklist()
 
 
 # ── Modèles légers ──────────────────────────────────────────────────────────
@@ -138,22 +143,50 @@ def call_llama(messages: list[dict[str, Any]], tools: list[dict[str, Any]]) -> d
         return json.loads(resp.read().decode("utf-8"))
 
 
-# Descriptions enrichies (proches de ce qu'a vu le LoRA en training,
-# cf. data/sft/opnsense_train.jsonl côté cyber-agent-engine).
-TOOL_DESCRIPTIONS: dict[str, str] = {
-    "list_cron_jobs": "Get list of all scheduled Cron jobs",
-    "get_cron_jobs": "Get list of all scheduled Cron jobs",
-    "diagnostics_cron": "Get list of all scheduled Cron jobs",
-    "list_firewall_rules": "List all firewall (pf) filter rules",
-    "list_nat_rules": "List all source-NAT (outbound NAT) rules",
-    "list_wg_peers": "List all WireGuard peers configured",
-    "system_status": "Get OPNsense system information (hostname, version, uptime)",
-    "get_system_information": "Get OPNsense system information (hostname, version, uptime)",
-    "block_ip": "Block an IP address by creating a firewall filter rule",
-    "schedule_cron_job": "Schedule a new Cron job",
-    "restart_unbound": "Restart the Unbound DNS resolver service",
-    "restart_suricata": "Restart the Suricata IDS/IPS service",
+# Overrides locaux : aliases / endpoints qu'on ajoute au catalog auto.
+# Cas typiques :
+#   - alias observé en sortie LoRA (ex: `diagnostics_cron` au lieu de
+#     `get_cron_jobs` que le catalog ne contient pas)
+#   - endpoint custom pour un wrapper haut niveau (`block_ip` qui passe
+#     via `addRule` avec un payload qu'on adapte ensuite)
+#
+# Ces overrides COMPLÈTENT TOOLS_CATALOG (ils ne le remplacent pas).
+TOOLS_LOCAL_OVERRIDES: dict[str, tuple[str, str, bool]] = {
+    # Aliases vus en sortie LoRA mais hors catalog auto
+    "diagnostics_cron": ("GET", "/api/cron/settings/searchJobs", False),
+    "get_cron_jobs": ("GET", "/api/cron/settings/searchJobs", False),
+    "list_cron_jobs": ("GET", "/api/cron/settings/searchJobs", False),
+    "get_filter_rule": ("GET", "/api/firewall/filter/get", False),
+    "list_firewall_rules": ("GET", "/api/firewall/filter/get", False),
+    "wireguard_client_get_client_builder": ("GET", "/api/wireguard/client/get", False),
+    "get_wireguard_clients": ("GET", "/api/wireguard/client/get", False),
+    "get_wireguard_peers": ("GET", "/api/wireguard/server/get", False),
+    "list_wg_peers": ("GET", "/api/wireguard/server/get", False),
+    "system_status": ("GET", "/api/diagnostics/system/system_information", False),
+    "get_system_information": ("GET", "/api/diagnostics/system/system_information", False),
+    "list_firewall_states": ("GET", "/api/diagnostics/firewall/pf_states", False),
+    "block_ip": ("POST", "/api/firewall/filter/addRule", True),
+    "restart_unbound": ("POST", "/api/unbound/service/restart", True),
+    "restart_suricata": ("POST", "/api/ids/service/restart", True),
 }
+
+# Catalog effectif = auto-généré + overrides locaux. C'est ce que
+# l'agent utilise au dispatch.
+TOOLS_EFFECTIVE: dict[str, tuple[str, str, bool]] = {
+    **TOOLS_CATALOG,
+    **TOOLS_LOCAL_OVERRIDES,
+}
+
+# Descriptions complétées : auto-générées du training + locales
+TOOL_DESCRIPTIONS_LOCAL: dict[str, str] = {
+    "diagnostics_cron": "Get list of all scheduled Cron jobs",
+    "get_cron_jobs": "Get list of all scheduled Cron jobs",
+    "list_cron_jobs": "Get list of all scheduled Cron jobs",
+    "block_ip": "Block an IP address by creating a firewall filter rule",
+    "list_firewall_states": "List active pf states (current connections)",
+    "system_status": "Get OPNsense system information (hostname, version, uptime)",
+}
+TOOL_DESCRIPTIONS_EFFECTIVE: dict[str, str] = {**TOOL_DESCRIPTIONS, **TOOL_DESCRIPTIONS_LOCAL}
 
 
 # Adaptateurs args : transforme le payload simple produit par le LoRA
@@ -217,15 +250,22 @@ def extract_tool_calls_from_content(content: str) -> list[dict[str, Any]]:
 
 
 def whitelist_tools() -> list[dict[str, Any]]:
-    """Convertit le TOOLS_WHITELIST en schéma OpenAI tools."""
+    """Convertit TOOLS_EFFECTIVE en schéma OpenAI tools, blacklist filtrée.
+
+    On envoie au LoRA seulement les tools dispatchables (catalog auto +
+    overrides locaux) MOINS la blacklist opérateur. Le LoRA peut encore
+    halluciner un nom hors de cette liste — on filtrera côté dispatch.
+    """
     out = []
-    for name in TOOLS_WHITELIST:
+    for name in TOOLS_EFFECTIVE:
+        if name in TOOLS_BLACKLIST:
+            continue
         out.append(
             {
                 "type": "function",
                 "function": {
                     "name": name,
-                    "description": TOOL_DESCRIPTIONS.get(name, f"OPNsense action {name}"),
+                    "description": TOOL_DESCRIPTIONS_EFFECTIVE.get(name, f"OPNsense action {name}"),
                     "parameters": {"type": "object", "properties": {}, "required": []},
                 },
             }
@@ -317,10 +357,25 @@ def run_intent(intent: str, scope_confirmed: bool = False) -> int:
     except json.JSONDecodeError:
         args = {}
 
-    if fn not in TOOLS_WHITELIST:
-        logger.error("tool '%s' hors whitelist", fn)
+    # Trois cas pour valider le tool_call :
+    #   - dans TOOLS_EFFECTIVE → dispatchable
+    #   - dans KNOWN_UNMAPPED  → connu du LoRA mais pas mappé côté agent
+    #     (à compléter dans TOOLS_LOCAL_OVERRIDES)
+    #   - sinon                 → hallucination LoRA
+    if fn in TOOLS_BLACKLIST:
+        logger.error("tool '%s' désactivé par l'opérateur (blacklist)", fn)
+        return 5
+    if fn not in TOOLS_EFFECTIVE:
+        if fn in KNOWN_UNMAPPED:
+            logger.error(
+                "tool '%s' connu du LoRA mais sans endpoint mappé côté agent "
+                "(à ajouter dans TOOLS_LOCAL_OVERRIDES de oaf_agent.py)",
+                fn,
+            )
+            return 6
+        logger.error("tool '%s' inconnu (hallucination, hors training LoRA)", fn)
         return 3
-    method, path, mutating = TOOLS_WHITELIST[fn]
+    method, path, mutating = TOOLS_EFFECTIVE[fn]
     if mutating and not scope_confirmed:
         logger.error("tool '%s' est mutating, --confirm requis", fn)
         print(json.dumps({"would_call": {"tool": fn, "method": method, "path": path, "args": args}}, indent=2))
