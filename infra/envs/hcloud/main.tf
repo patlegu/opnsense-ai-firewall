@@ -276,3 +276,123 @@ module "wireguard_mesh" {
 
   depends_on = [module.opnsense, module.debian, module.llm]
 }
+
+# ── LLM EMBARQUÉ DANS OPNSENSE (caractéristique de ce repo) ─────────────────
+#
+# Après que le module hcloud-opnsense ait fini d'installer la VM, on SCP
+# le binaire llama-server natif FreeBSD + ses libs + les scripts rc.d et
+# post-install, puis on déclenche le post-install qui :
+#   - télécharge la base Phi-3 GGUF et le LoRA depuis HuggingFace
+#   - active et démarre le service llama (rc.d)
+#   - poll /health pour valider que llama-server répond sur 127.0.0.1:8080
+#
+# Les triggers re-déclenchent ce null_resource si :
+#   - le binaire local change (rebuild llama.cpp)
+#   - les paramètres LLM changent (URLs, port, ctx_size)
+#
+# Pré-requis : llama-bin/freebsd-amd64/llama-server doit exister localement
+# (palier B). Sinon, tofu apply fail-fast avec un message lisible.
+
+locals {
+  llm_bin_path  = "${path.module}/../../../llama-bin/freebsd-amd64/llama-server"
+  llm_libs_path = "${path.module}/../../../llama-bin/freebsd-amd64/lib"
+
+  llm_rc_script = templatefile("${path.module}/templates/rc-llama.tftpl", {
+    listen_addr   = var.opnsense_llm_listen_addr
+    port          = var.opnsense_llm_port
+    ctx_size      = var.opnsense_llm_ctx_size
+    base_filename = var.opnsense_llm_base_filename
+    lora_filename = var.opnsense_llm_lora_filename
+  })
+
+  llm_post_install = templatefile("${path.module}/templates/post-install-llm.sh.tftpl", {
+    base_url      = var.opnsense_llm_base_url
+    base_filename = var.opnsense_llm_base_filename
+    lora_url      = var.opnsense_llm_lora_url
+    lora_filename = var.opnsense_llm_lora_filename
+    listen_addr   = var.opnsense_llm_listen_addr
+    port          = var.opnsense_llm_port
+  })
+}
+
+# Sentinelle qui échoue si le binaire FreeBSD est absent et que le LLM
+# est activé. Évite un null_resource qui se vautre 5 min plus tard avec
+# un message obscur.
+resource "null_resource" "check_llama_binary" {
+  count = var.opnsense_llm_enabled ? 1 : 0
+  lifecycle {
+    precondition {
+      condition     = fileexists(local.llm_bin_path)
+      error_message = "Binaire llama-server FreeBSD manquant à ${local.llm_bin_path}. Lancer 'bash scripts/build-llama-freebsd.sh root@<IP_VM_FREEBSD>' d'abord (voir docs/build-llama-freebsd.md), ou désactiver opnsense_llm_enabled=false."
+    }
+  }
+}
+
+resource "null_resource" "embedded_llm" {
+  count = var.opnsense_llm_enabled ? 1 : 0
+
+  # Re-trigger si le binaire local change OU si les paramètres LLM changent.
+  triggers = {
+    binary_md5     = filemd5(local.llm_bin_path)
+    rc_script_sha  = sha256(local.llm_rc_script)
+    post_inst_sha  = sha256(local.llm_post_install)
+    base_url       = var.opnsense_llm_base_url
+    lora_url       = var.opnsense_llm_lora_url
+    listen_addr    = var.opnsense_llm_listen_addr
+    port           = var.opnsense_llm_port
+    opnsense_ip    = module.opnsense.public_ip
+  }
+
+  connection {
+    type        = "ssh"
+    host        = module.opnsense.public_ip
+    port        = var.opnsense_ssh_port
+    user        = "root"
+    private_key = file(pathexpand(var.ssh_private_key_path))
+    timeout     = "5m"
+  }
+
+  # 1. Préparer l'arborescence /var/llm/{bin,lib,models}
+  provisioner "remote-exec" {
+    inline = [
+      "mkdir -p /var/llm/bin /var/llm/lib /var/llm/models /var/log/llama",
+    ]
+  }
+
+  # 2. SCP du binaire llama-server (FreeBSD amd64, compilé en palier B)
+  provisioner "file" {
+    source      = local.llm_bin_path
+    destination = "/var/llm/bin/llama-server"
+  }
+
+  # 3. SCP du dossier lib/ (dossier complet, récursif)
+  provisioner "file" {
+    source      = "${local.llm_libs_path}/"
+    destination = "/var/llm/lib"
+  }
+
+  # 4. SCP du rc.d script (rendu depuis template)
+  provisioner "file" {
+    content     = local.llm_rc_script
+    destination = "/usr/local/etc/rc.d/llama"
+  }
+
+  # 5. SCP du script post-install (rendu depuis template)
+  provisioner "file" {
+    content     = local.llm_post_install
+    destination = "/tmp/post-install-llm.sh"
+  }
+
+  # 6. chmod + exécution du post-install (download GGUF + start service + healthcheck)
+  provisioner "remote-exec" {
+    inline = [
+      "chmod +x /var/llm/bin/llama-server /usr/local/etc/rc.d/llama /tmp/post-install-llm.sh",
+      "/tmp/post-install-llm.sh",
+    ]
+  }
+
+  depends_on = [
+    module.opnsense,
+    null_resource.check_llama_binary,
+  ]
+}

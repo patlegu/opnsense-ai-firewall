@@ -260,6 +260,12 @@ variable "opnsense_llm_ctx_size" {
   default     = 4096
 }
 
+variable "ssh_private_key_path" {
+  description = "Clé SSH privée locale pour les provisioners du null_resource embedded_llm (SCP binaire + remote-exec). Pas utilisée par les modules iac-modules eux-mêmes (eux passent par cloud-init + clé publique côté Hetzner). Doit correspondre au pendant privé de var.ssh_public_key."
+  type        = string
+  default     = "~/.ssh/id_ed25519"
+}
+
 # ── WireGuard mesh ───────────────────────────────────────────────────────────
 
 variable "wg_enabled" {

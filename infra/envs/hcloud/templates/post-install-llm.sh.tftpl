@@ -1,0 +1,84 @@
+#!/bin/sh
+#
+# post-install-llm.sh — provisioning du LLM embarqué dans OPNsense.
+# Exécuté UNE FOIS par le null_resource Tofu après que les artefacts
+# (binaire FreeBSD + libs + rc.d script) ont été SCP-ifiés.
+#
+# Doit être idempotent : re-jouable sans casser un déploiement existant.
+
+set -eu
+
+LLM_BASE_URL="${base_url}"
+LLM_BASE_FILENAME="${base_filename}"
+LLM_LORA_URL="${lora_url}"
+LLM_LORA_FILENAME="${lora_filename}"
+LLM_LISTEN="${listen_addr}"
+LLM_PORT="${port}"
+
+echo "[post-install-llm] LLM_LISTEN=$${LLM_LISTEN} LLM_PORT=$${LLM_PORT}"
+
+mkdir -p /var/llm/models /var/llm/bin /var/llm/lib /var/log/llama
+
+# ── 1. Vérifier que les artefacts SCP sont bien là ──────────────────────
+if [ ! -x /var/llm/bin/llama-server ]; then
+    echo "[post-install-llm] /var/llm/bin/llama-server manquant — abandon" >&2
+    exit 1
+fi
+if ! ls /var/llm/lib/libllama.so* >/dev/null 2>&1; then
+    echo "[post-install-llm] /var/llm/lib/libllama.so* manquant — abandon" >&2
+    exit 1
+fi
+
+# ── 2. Download des modèles GGUF (si pas déjà là) ───────────────────────
+# fetch(1) est dans le base system FreeBSD/OPNsense — pas besoin de pkg.
+
+if [ ! -f "/var/llm/models/$${LLM_BASE_FILENAME}" ]; then
+    echo "[post-install-llm] download base $${LLM_BASE_FILENAME}..."
+    fetch --no-verify-hostname -o "/var/llm/models/$${LLM_BASE_FILENAME}" "$${LLM_BASE_URL}"
+fi
+
+if [ ! -f "/var/llm/models/$${LLM_LORA_FILENAME}" ]; then
+    echo "[post-install-llm] download lora $${LLM_LORA_FILENAME}..."
+    fetch --no-verify-hostname -o "/var/llm/models/$${LLM_LORA_FILENAME}" "$${LLM_LORA_URL}"
+fi
+
+# ── 3. Vérification rapide des tailles (sanité, pas crypto) ─────────────
+BASE_BYTES=$(stat -f %z "/var/llm/models/$${LLM_BASE_FILENAME}" 2>/dev/null || echo 0)
+LORA_BYTES=$(stat -f %z "/var/llm/models/$${LLM_LORA_FILENAME}" 2>/dev/null || echo 0)
+if [ "$${BASE_BYTES}" -lt 1000000000 ]; then
+    echo "[post-install-llm] base trop petit ($${BASE_BYTES} B), download échoué ?" >&2
+    exit 1
+fi
+if [ "$${LORA_BYTES}" -lt 100000000 ]; then
+    echo "[post-install-llm] lora trop petit ($${LORA_BYTES} B), download échoué ?" >&2
+    exit 1
+fi
+echo "[post-install-llm] base=$${BASE_BYTES} bytes  lora=$${LORA_BYTES} bytes"
+
+# ── 4. Démarrer / redémarrer le service llama ───────────────────────────
+chmod +x /usr/local/etc/rc.d/llama
+# rc(8) recharge le script à chaque appel — pas besoin de daemon-reload.
+if service llama status >/dev/null 2>&1; then
+    echo "[post-install-llm] service en cours, restart..."
+    service llama restart
+else
+    echo "[post-install-llm] premier démarrage..."
+    service llama start
+fi
+
+# ── 5. Health check ─────────────────────────────────────────────────────
+# llama-server expose /health quand le modèle est chargé. Le premier load
+# d'un GGUF 2.5 GB prend 10-25 s selon disque.
+
+echo "[post-install-llm] attente du /health (jusqu'à 90s)..."
+for i in $(seq 1 30); do
+    if curl -sf -o /dev/null --connect-timeout 2 "http://$${LLM_LISTEN}:$${LLM_PORT}/health"; then
+        echo "[post-install-llm] OK : llama-server répond sur $${LLM_LISTEN}:$${LLM_PORT}"
+        exit 0
+    fi
+    sleep 3
+done
+
+echo "[post-install-llm] /health pas répondu en 90s. Voir /var/log/llama/server.log :" >&2
+tail -40 /var/log/llama/server.log >&2 || true
+exit 1

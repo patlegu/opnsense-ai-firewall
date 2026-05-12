@@ -1,0 +1,70 @@
+#!/bin/sh
+#
+# llama — rc(8) service script pour llama-server (Phi-3 + LoRA OPNsense)
+# Géré par opnsense-ai-firewall. Voir docs/embedded-llm.md.
+#
+# PROVIDE: llama
+# REQUIRE: NETWORKING SYSCTL
+# KEYWORD: shutdown
+#
+# Activation : ce fichier est posé en /usr/local/etc/rc.d/llama et le
+# service est démarré explicitement par le script post-install
+# (cf. post-install-llm.sh). Les paramètres viennent du template Tofu
+# (cf. infra/envs/hcloud/templates/rc-llama.tftpl) et sont **figés** —
+# pas de sysrc, pas de rc.conf.local pour OPNsense.
+
+. /etc/rc.subr
+
+name="llama"
+rcvar="llama_enable"
+desc="llama-server with LoRA (opnsense-ai-firewall)"
+
+# Toujours actif quand le script est posé.
+llama_enable="YES"
+
+# ── Paramètres figés au tofu apply ──────────────────────────────────────
+LLM_BIN="/var/llm/bin/llama-server"
+LLM_LIBS="/var/llm/lib"
+LLM_MODEL="/var/llm/models/${base_filename}"
+LLM_LORA="/var/llm/models/${lora_filename}"
+LLM_LISTEN="${listen_addr}"
+LLM_PORT="${port}"
+LLM_CTX="${ctx_size}"
+LLM_LOG="/var/log/llama/server.log"
+LLM_PIDFILE="/var/run/llama.pid"
+
+pidfile="$${LLM_PIDFILE}"
+
+# daemon(8) wrap : crée le PID, redirige stdout/stderr, daemonize.
+command="/usr/sbin/daemon"
+command_args="-P $${pidfile} -o $${LLM_LOG} \
+    -- \
+    env LD_LIBRARY_PATH=$${LLM_LIBS} \
+    $${LLM_BIN} \
+    -m $${LLM_MODEL} \
+    --lora $${LLM_LORA} \
+    --host $${LLM_LISTEN} \
+    --port $${LLM_PORT} \
+    --ctx-size $${LLM_CTX} \
+    --jinja"
+
+start_precmd="llama_precmd"
+
+llama_precmd() {
+    mkdir -p /var/log/llama /var/llm/models /var/llm/bin /var/llm/lib
+    if [ ! -x "$${LLM_BIN}" ]; then
+        echo "[llama] binaire introuvable : $${LLM_BIN}" >&2
+        return 1
+    fi
+    if [ ! -f "$${LLM_MODEL}" ]; then
+        echo "[llama] modèle base introuvable : $${LLM_MODEL}" >&2
+        return 1
+    fi
+    if [ ! -f "$${LLM_LORA}" ]; then
+        echo "[llama] LoRA introuvable : $${LLM_LORA}" >&2
+        return 1
+    fi
+}
+
+load_rc_config "$$name"
+run_rc_command "$$1"
