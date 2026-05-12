@@ -63,8 +63,11 @@ TOOLS_WHITELIST: dict[str, tuple[str, str, bool]] = {
     "get_cron_jobs": ("GET", "/api/cron/settings/searchJobs", False),       # alias
     "diagnostics_cron": ("GET", "/api/cron/settings/searchJobs", False),    # alias vu en sortie LoRA
     "list_firewall_rules": ("GET", "/api/firewall/filter/get", False),
+    "get_filter_rule": ("GET", "/api/firewall/filter/get", False),                              # alias LoRA
     "list_nat_rules": ("GET", "/api/firewall/source_nat/get", False),
     "list_wg_peers": ("GET", "/api/wireguard/server/get", False),
+    "wireguard_client_get_client_builder": ("GET", "/api/wireguard/client/get", False),        # alias LoRA
+    "get_wireguard_clients": ("GET", "/api/wireguard/client/get", False),                       # alias LoRA
     "system_status": ("GET", "/api/diagnostics/system/system_information", False),
     "get_system_information": ("GET", "/api/diagnostics/system/system_information", False),
     # Mutating (scope_confirmed obligatoire)
@@ -150,6 +153,30 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
     "schedule_cron_job": "Schedule a new Cron job",
     "restart_unbound": "Restart the Unbound DNS resolver service",
     "restart_suricata": "Restart the Suricata IDS/IPS service",
+}
+
+
+# Adaptateurs args : transforme le payload simple produit par le LoRA
+# (aligné training, ex: {"ip": "1.2.3.4"}) en payload conforme au schema
+# REST d'OPNsense (ex: {"rule": {action, interface, source_net, ...}}).
+# Si un tool n'a pas d'adapter ici, les args du LoRA passent tels quels.
+ARG_ADAPTERS: dict[str, Any] = {
+    # block_ip → POST /api/firewall/filter/addRule
+    # OPNsense attend une structure {"rule": {...}} avec au minimum les
+    # champs action, interface, source_net (ou source.address), protocol.
+    "block_ip": lambda args: {
+        "rule": {
+            "enabled": "1",
+            "action": "block",
+            "interface": args.get("interface", "wan"),
+            "direction": "in",
+            "ipprotocol": "inet",
+            "protocol": "any",
+            "source_net": args.get("ip") or args.get("source") or args.get("address", ""),
+            "destination_net": "any",
+            "description": args.get("description") or f"Blocked {args.get('ip','')} by oaf-agent",
+        }
+    },
 }
 
 
@@ -299,9 +326,19 @@ def run_intent(intent: str, scope_confirmed: bool = False) -> int:
         print(json.dumps({"would_call": {"tool": fn, "method": method, "path": path, "args": args}}, indent=2))
         return 4
 
-    # Étape 4 : appel OPNsense local.
-    logger.info("→ %s %s args=%s", method, path, args)
-    result = call_opnsense(method, path, body=args if method != "GET" else None)
+    # Étape 4 : adapter les args vers le schema attendu par l'API OPNsense.
+    # Le LoRA produit des args "simples" alignés sur le format training (ex:
+    # {ip, description}) mais l'API REST OPNsense attend des structures
+    # plus complexes (ex: {rule: {action, interface, source_net, ...}}).
+    # On applique un mapping par tool si nécessaire — sinon les args
+    # passent tels quels.
+    adapted = ARG_ADAPTERS.get(fn, lambda a: a)(args)
+    if adapted is not args:
+        logger.info("args adaptés (%s) : %s", fn, adapted)
+
+    # Étape 5 : appel OPNsense local.
+    logger.info("→ %s %s args=%s", method, path, adapted)
+    result = call_opnsense(method, path, body=adapted if method != "GET" else None)
     print(json.dumps(result, indent=2, ensure_ascii=False))
     return 0
 
