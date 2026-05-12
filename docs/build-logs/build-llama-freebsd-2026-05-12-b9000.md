@@ -15,7 +15,7 @@ côté `llama-server`. Sur **b9000** (1er mai 2026), c'est natif.
 | Item | Valeur |
 | --- | --- |
 | Date | 2026-05-12 |
-| Build host | VM libvirt sur korrig.breizhland.eu (réseau `oaf-build-net`) |
+| Build host | VM libvirt sur <LIBVIRT_HOST> (réseau `oaf-build-net`) |
 | OS de build | FreeBSD 14.4-RELEASE amd64 |
 | vCPU / RAM | 4 / 4 GB |
 
@@ -93,8 +93,8 @@ le code a beaucoup grossi côté serveur (tool-calling, jinja, etc.).
 Toujours stoppable/redémarrable :
 
 ```bash
-ssh -p 2222 root@korrig.breizhland.eu 'virsh shutdown oaf-build-freebsd'
+ssh -p 2222 root@<LIBVIRT_HOST> 'virsh shutdown oaf-build-freebsd'
 # plus tard :
-ssh -p 2222 root@korrig.breizhland.eu 'virsh start oaf-build-freebsd'
-ssh -J root@korrig.breizhland.eu:2222 root@192.168.230.50
+ssh -p 2222 root@<LIBVIRT_HOST> 'virsh start oaf-build-freebsd'
+ssh -J root@<LIBVIRT_HOST>:2222 root@192.168.230.50
 ```

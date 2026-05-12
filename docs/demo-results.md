@@ -147,7 +147,7 @@ la latence pf < Y ms).
 ## Lessons learned (pièges traversés pendant cette validation)
 
 1. **Hetzner Cloud + FreeBSD via mfsBSD** → galère. Utiliser une VM
-   libvirt sur korrig avec image FreeBSD CI officielle (cf.
+   libvirt sur <LIBVIRT_HOST> avec image FreeBSD CI officielle (cf.
    `docs/build-llama-freebsd.md`).
 2. **llama.cpp b3813 sans `--jinja`** → `Unsupported param: tools` sur
    `/v1/chat/completions`. Bump à b9000.

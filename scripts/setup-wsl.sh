@@ -9,14 +9,14 @@
 #   bash scripts/setup-wsl.sh                    # vérif + install tout ce qui manque
 #   bash scripts/setup-wsl.sh --check-only        # vérif sans rien installer
 #   bash scripts/setup-wsl.sh --skip-binaries     # ne propose pas le rsync 2.5 GB
-#   bash scripts/setup-wsl.sh --korrig <host>     # source rsync (défaut korrig.breizhland.eu:2222)
+#   bash scripts/setup-wsl.sh --<LIBVIRT_HOST> <host>     # source rsync (défaut <LIBVIRT_HOST>:2222)
 
 set -euo pipefail
 
 # ── Config ──────────────────────────────────────────────────────────────────
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 REPO_PATH="${PROJECT_DIR}"
-KORRIG_HOST="${KORRIG_HOST:-korrig.breizhland.eu}"
+KORRIG_HOST="${KORRIG_HOST:-<LIBVIRT_HOST>}"
 KORRIG_PORT="${KORRIG_PORT:-2222}"
 KORRIG_USER="${KORRIG_USER:-root}"
 KORRIG_REMOTE_DIR="/srv/_AI/kickstart-forge"
@@ -43,7 +43,7 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --check-only)    CHECK_ONLY=1; shift ;;
         --skip-binaries) SKIP_BINARIES=1; shift ;;
-        --korrig)        KORRIG_HOST="$2"; shift 2 ;;
+        --<LIBVIRT_HOST>)        KORRIG_HOST="$2"; shift 2 ;;
         -h|--help)
             sed -n '2,17p' "$0"
             exit 0 ;;
@@ -247,7 +247,7 @@ echo
 echo "  Vérifier que l'upload GitLab est OK :"
 echo "    https://gitlab.com/llm_tests/kickstart-forge/-/packages"
 echo
-echo "  Si tu veux uploader/re-uploader les fichiers, depuis korrig (où ils existent) :"
+echo "  Si tu veux uploader/re-uploader les fichiers, depuis <LIBVIRT_HOST> (où ils existent) :"
 echo "    GITLAB_PAT=glpat-... bash scripts/upload-llm-assets.sh"
 echo
 echo "  Optionnel : rsync local pour mode SCP (alternative aux URLs) :"

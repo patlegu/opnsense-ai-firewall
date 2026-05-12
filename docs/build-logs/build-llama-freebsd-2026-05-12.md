@@ -9,7 +9,7 @@ diagnostic d'une éventuelle régression future.
 | Item | Valeur |
 | --- | --- |
 | Date | 2026-05-12 |
-| Build host | VM libvirt sur korrig.breizhland.eu (réseau `oaf-build-net`) |
+| Build host | VM libvirt sur <LIBVIRT_HOST> (réseau `oaf-build-net`) |
 | OS de build | FreeBSD 14.4-RELEASE amd64 (`releng/14.4-n273675-a456f852d145`) |
 | Image source | `FreeBSD-14.4-RELEASE-amd64-BASIC-CI.raw.xz` (CI image officielle) |
 | vCPU / RAM | 4 / 4 GB |
@@ -101,19 +101,19 @@ lib/libopenblas.so.0                                         f544a5f61fe0817df31
 lib/libquadmath.so.0                                         7691f212d8f22e74eea1dd23429d2006eea404af699e1a964c2f3faa5fb8a363
 ```
 
-Tarball intermédiaire (avant unpack côté damask) :
+Tarball intermédiaire (avant unpack côté <WORKSTATION>) :
 `4743852f93de290d547819cf9a7860b26de0de5bdd21384940cc40284ab5ccae`.
 
 ## VM de build (statut)
 
-La VM `oaf-build-freebsd` sur korrig est **gardée stopped** (pas
+La VM `oaf-build-freebsd` sur <LIBVIRT_HOST> est **gardée stopped** (pas
 détruite) — utile si on veut rebuilder à un autre tag llama.cpp ou
 compiler d'autres composants FreeBSD. Pour la réutiliser :
 
 ```bash
-ssh -p 2222 root@korrig.breizhland.eu 'virsh start oaf-build-freebsd'
+ssh -p 2222 root@<LIBVIRT_HOST> 'virsh start oaf-build-freebsd'
 # attendre 30s puis SSH via ProxyJump :
-ssh -J root@korrig.breizhland.eu:2222 root@192.168.230.50
+ssh -J root@<LIBVIRT_HOST>:2222 root@192.168.230.50
 ```
 
 ## Pièges rencontrés (résumé, pour mémoire long terme)
@@ -123,6 +123,6 @@ ssh -J root@korrig.breizhland.eu:2222 root@192.168.230.50
   FreeBSD 14.4 — il faut le `pkg install pkgconf` séparément (sinon
   cmake plante en chasse de `pkg-config`).
 - Cloud-init seed iso + image BASIC-CI marche très bien sur libvirt
-  korrig (par contre Hetzner Cloud + mfsBSD = friction).
+  <LIBVIRT_HOST> (par contre Hetzner Cloud + mfsBSD = friction).
 - Le `pool DHCP` du réseau `ptm-pentest-stack-lan-1` était saturé →
   créé un network dédié `oaf-build-net` (192.168.230.0/24).

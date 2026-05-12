@@ -325,7 +325,7 @@ async def add_outbound_nat(src_net: str, dst_net: str,
                             description_tag: str = "ASP-NAT-WG") -> None:
     """Ajoute une règle SNAT outbound pour router src_net → dst_net via interface.
 
-    Permet à korrig (192.168.21.0/24) d'atteindre les peers WG (10.10.0.0/24)
+    Permet à <LIBVIRT_HOST> (192.168.21.0/24) d'atteindre les peers WG (10.10.0.0/24)
     en source-NATant via wg0 — sinon les peers reçoivent un paquet avec
     src=192.168.21.x qui n'est pas dans leur AllowedIPs et la réponse est
     perdue (routing asymétrique).
@@ -731,7 +731,7 @@ async def main() -> None:
     p_svc.add_argument("action", choices=["start", "stop", "restart", "status", "reconfigure"])
     p_boot = sub.add_parser("bootstrap", help="Bootstrap complet OPNsense pour WG (idempotent) : enable + pass rule WAN + outbound NAT")
     p_boot.add_argument("--wg-port",  type=int, default=51820)
-    p_boot.add_argument("--nat-src",  default="192.168.21.0/24", help="Subnet source à SNAT vers wg (défaut LAN korrig)")
+    p_boot.add_argument("--nat-src",  default="192.168.21.0/24", help="Subnet source à SNAT vers wg (défaut LAN <LIBVIRT_HOST>)")
     p_boot.add_argument("--nat-dst",  default="10.10.0.0/24",   help="Subnet WG cible")
     p_boot.add_argument("--wg-iface", default="wg0",            help="Interface WireGuard côté OPNsense")
     p_rm = sub.add_parser("remove-peer", help="Retirer un peer WireGuard par nom")

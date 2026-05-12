@@ -345,7 +345,7 @@ variable "ssh_public_keys" {
     Exemple tfvars :
       ssh_public_keys = [
         "ssh-ed25519 AAAA...damask",   # primaire (apply)
-        "ssh-ed25519 AAAA...korrig",   # secondaire (admin)
+        "ssh-ed25519 AAAA...<LIBVIRT_HOST>",   # secondaire (admin)
       ]
   EOT
   type        = list(string)

@@ -283,9 +283,9 @@ Ce log permet à un futur opérateur de :
   d'OpenBLAS ou de clang ;
 - ne pas avoir à *deviner* ce qui se trouve dans le binaire.
 
-## Alternative : libvirt sur korrig
+## Alternative : libvirt sur <LIBVIRT_HOST>
 
-Si tu as un host libvirt (`korrig` par convention dans cet écosystème),
+Si tu as un host libvirt (`<LIBVIRT_HOST>` par convention dans cet écosystème),
 le module `iac-modules/libvirt/freebsd-vm` (à créer en upstream)
 spawne une VM FreeBSD 14 locale gratuite. Procédure plus rapide et
 sans coût Hetzner, mais nécessite le host libvirt.
@@ -295,7 +295,7 @@ sans coût Hetzner, mais nécessite le host libvirt.
 Compilation de notes prises pendant les tentatives de mai 2026 — à
 consulter avant de relancer la procédure pour gagner du temps.
 
-### 1. La clé SSH "root@damask" enregistrée chez Hetzner ne matchait pas la clé locale
+### 1. La clé SSH "root@<WORKSTATION>" enregistrée chez Hetzner ne matchait pas la clé locale
 
 Plusieurs clés ed25519 portant le même nom dans `hcloud ssh-key list`
 viennent de machines distinctes. Vérifier `ssh-keygen -lf
