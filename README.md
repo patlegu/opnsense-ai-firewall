@@ -39,76 +39,138 @@ Forked from `kickstart-forge` (template Hetzner Cloud privé).
 > modules Tofu (les contrats d'interface sont documentés dans
 > `infra/envs/hcloud/variables.tf`).
 
+## Ce qu'il faut pour faire tourner le GGUF
+
+**Trois ingrédients**, rien d'autre :
+
+1. **Une VM OPNsense** — n'importe laquelle, peu importe l'hébergeur
+   (Hetzner Cloud, libvirt local, baremetal, lab perso…). Version
+   conseillée : 26.1.x amd64 (FreeBSD 14). Au moins 8 GB de RAM pour
+   tenir le modèle (~2.4 GB) + `pf` + le reste de la VM.
+2. **`llama-server` compilé pour FreeBSD** — binaire + 6 `.so`
+   embarqués (`libllama`, `libggml*`, `libopenblas`, `libgfortran`,
+   `libquadmath`). C'est l'effort principal du repo, voir
+   [`docs/build-llama-freebsd.md`](docs/build-llama-freebsd.md).
+   Tag `llama.cpp` ≥ b9000 (pour le support natif `tools` +
+   `--jinja`).
+3. **Le GGUF merged Phi-3+LoRA** : [`patlegu/opnsense-agent-phi35-q4_k_m.gguf`](https://huggingface.co/patlegu/opnsense-agent-phi35/resolve/main/opnsense-agent-phi35-q4_k_m.gguf)
+   sur Hugging Face (~2.4 GB, Q4_K_M, déjà fusionné — pas besoin de
+   `--lora`).
+
+Plus, côté OPNsense, **Python 3.11+** (un `pkg install python311`)
+pour l'agent local. C'est tout.
+
+Avec ces 3 éléments en place, le pipeline `intent → tool_call →
+API OPNsense` fonctionne sur n'importe quelle OPNsense — l'infra
+Hetzner/Tofu plus bas n'est qu'un confort d'automatisation.
+
 ## Topologie
 
 ```text
-Internet
-    │
-    ▼
-┌───────────────────────────────────────────────────────┐
-│  Hetzner Cloud — cx33 (8 GB) ou cx43 (16 GB)          │
-│                                                       │
-│  ┌─────────────────────────────────────────────────┐  │
-│  │  OPNsense 26.x (FreeBSD 14)                     │  │
-│  │  ┌───────────────────────────────────────────┐  │  │
-│  │  │ llama-server                              │  │  │
-│  │  │   bind 127.0.0.1:8080                     │  │  │
-│  │  │   Phi-3 mini Q4_K_M + opnsense_agent LoRA │  │  │
-│  │  └─────────────────┬─────────────────────────┘  │  │
-│  │                    │ HTTP local                  │  │
-│  │  ┌─────────────────▼─────────────────────────┐  │  │
-│  │  │ agent local (Python)                      │  │  │
-│  │  │   intent → CAP v1 → tool_call             │  │  │
-│  │  │   → OPNsense API 127.0.0.1:4443           │  │  │
-│  │  │   scope_confirmed guard sur tout mutating │  │  │
-│  │  └───────────────────────────────────────────┘  │  │
-│  │                                                 │  │
-│  │   pf · NAT · DHCP · DNS · …                     │  │
-│  └─────────────────────────────────────────────────┘  │
-│                                                       │
-└───────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────┐
+│  OPNsense 26.x (FreeBSD 14)                     │
+│  ┌───────────────────────────────────────────┐  │
+│  │ llama-server (FreeBSD natif, b9000+)      │  │
+│  │   bind 127.0.0.1:8080                     │  │
+│  │   merged Phi-3 mini Q4_K_M + LoRA OPNsense│  │
+│  └─────────────────┬─────────────────────────┘  │
+│                    │ HTTP local                  │
+│  ┌─────────────────▼─────────────────────────┐  │
+│  │ agent local (Python 3.11)                 │  │
+│  │   intent NL → tool_call (101/102)         │  │
+│  │   → OPNsense API 127.0.0.1:4443           │  │
+│  │   scope_confirmed sur tout mutating       │  │
+│  └───────────────────────────────────────────┘  │
+│                                                 │
+│   pf · NAT · DHCP · DNS · …                     │
+└─────────────────────────────────────────────────┘
 ```
 
 Aucun sidecar, aucun trafic LLM en clair sur le réseau, aucun port
 externe lié au LLM (toujours `127.0.0.1`). L'agent local et
 `llama-server` partagent le même CPU/RAM que `pf`.
 
-## Quickstart
+## Installation manuelle (n'importe quelle OPNsense)
+
+Si tu as déjà une OPNsense up et les artefacts compilés (cf. la
+section précédente) :
 
 ```bash
-# 1. Cloner + secrets
-git clone git@gitlab.com:llm_tests/opnsense-ai-firewall.git
-cd opnsense-ai-firewall
+# Depuis ton poste de travail
+OPNSENSE_IP="<IP_DE_TON_OPNSENSE>"
 
-# 1a. .env à la racine — HCLOUD_TOKEN obligatoire, TF_HTTP_* si backend
-#     GitLab Managed Terraform State activé.
-cat > .env <<'EOF'
-HCLOUD_TOKEN=hcloud_xxxxx
-# TF_HTTP_USERNAME=patlegu
-# TF_HTTP_PASSWORD=glpat-xxx
+# 1. SCP des artefacts FreeBSD + agent
+scp -P 2222 llama-bin/freebsd-amd64/llama-server \
+            root@${OPNSENSE_IP}:/var/llm/bin/
+scp -P 2222 llama-bin/freebsd-amd64/lib.tar.gz \
+            root@${OPNSENSE_IP}:/tmp/
+scp -P 2222 agent/oaf_agent.py agent/tools_catalog.py \
+            root@${OPNSENSE_IP}:/var/llm/agent/
+
+# 2. Sur la VM OPNsense : préparer, télécharger le GGUF, configurer rc.d
+ssh -p 2222 root@${OPNSENSE_IP} /bin/sh <<'EOF'
+set -e
+mkdir -p /var/llm/{bin,lib,models,agent} /var/log/llama
+tar -C /var/llm/lib -xzf /tmp/lib.tar.gz
+chmod +x /var/llm/bin/llama-server
+pkg install -y python311
+fetch --no-verify-hostname \
+    -o /var/llm/models/opnsense-agent-phi35-q4_k_m.gguf \
+    https://huggingface.co/patlegu/opnsense-agent-phi35/resolve/main/opnsense-agent-phi35-q4_k_m.gguf
 EOF
 
-# 1b. tfvars : juste les secrets propres au déploiement (hashes, clé pub,
-#     API OPNsense). hcloud_token n'est PAS requis ici — il sera lu de
-#     l'environnement HCLOUD_TOKEN (cf. 1a).
+# 3. Service rc.d + agent env (templates dans infra/envs/hcloud/templates/)
+#    Adapter rc-llama.tftpl et post-install-llm.sh.tftpl avec tes valeurs,
+#    pousser sur /usr/local/etc/rc.d/llama + /etc/oaf-agent.env, puis :
+ssh -p 2222 root@${OPNSENSE_IP} 'service llama start && oaf-agent health'
+```
+
+Résultat attendu :
+
+```text
+[oaf] llama-server : 200 {"status":"ok"}
+[oaf] OPNsense API OK : keys=['name', 'versions', 'updates']
+```
+
+À partir de là, `oaf-agent ask "Show system information"` te retourne
+un JSON OPNsense, `oaf-agent ask "Block IP 1.2.3.4 on WAN" --confirm`
+crée une vraie règle `pf`. Voir [`docs/demo-results.md`](docs/demo-results.md)
+pour les traces de validation.
+
+## Automatisation Hetzner (Tofu, optionnel)
+
+Si tu déploies sur **Hetzner Cloud** et que tu veux tout en une
+commande, l'infra Tofu de `infra/envs/hcloud/` automatise les
+étapes ci-dessus (création VM + SCP artefacts + rc.d + healthcheck).
+Elle **dépend du module privé `iac-modules`** (cf. note publique
+en haut), donc pour reproduire ailleurs il faut adapter les sources
+de module. C'est l'angle "lab Hetzner" du repo, pas la fonctionnalité
+centrale.
+
+<details>
+<summary>Quickstart Tofu Hetzner (déplier)</summary>
+
+```bash
+# .env à la racine du projet
+cat > .env <<'EOF'
+HCLOUD_TOKEN=hcloud_xxxxx
+EOF
+
+# tfvars : secrets propres au déploiement
 cp infra/envs/hcloud/terraform.tfvars.example \
    infra/envs/hcloud/terraform.tfvars
-# Renseigner : ssh_public_key, vm_password_hash, opnsense_root_hash, …
-
+# Renseigner ssh_public_keys, vm_password_hash, etc.
 bash scripts/init-secrets.sh --auto
 
-# 2. Compiler llama.cpp pour FreeBSD (palier B — une fois)
-bash scripts/build-llama-freebsd.sh
-# produit llama-bin/freebsd-amd64/{llama-server, lib/*.so}
+# Build llama.cpp FreeBSD (une fois)
+bash scripts/build-llama-freebsd.sh root@<IP_VM_FREEBSD>
 
-# 3. Déployer
-set -a && . .env && set +a   # charge HCLOUD_TOKEN dans l'env Tofu
-cd infra/envs/hcloud
-tofu init && tofu apply
-
-# 4. Vérifier que l'agent répond
-ssh -p 2222 root@<IP_OPNSENSE> 'curl -s http://127.0.0.1:8080/health'
+# Déployer
+set -a && . .env && set +a
+cd infra/envs/hcloud && tofu init && tofu apply
 ```
+
+</details>
 
 ## Composants
 
