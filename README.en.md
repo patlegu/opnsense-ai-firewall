@@ -89,6 +89,112 @@ No sidecar, no cleartext LLM traffic on the network, no external
 port tied to the LLM (always `127.0.0.1`). The local agent and
 `llama-server` share the same CPU/RAM as `pf`.
 
+## How it actually works (and where the LLM does the real work)
+
+Fair question: *"the repo has a Python dispatcher, a catalog of
+116 endpoints and payload adapters — what does the LLM actually
+do?"*
+
+The LLM does the **non-mechanical** part. The rest of the repo is
+just the wiring between what the LoRA produces and the OPNsense
+REST API. Full end-to-end example:
+
+### Step 1 — Human writes a natural-language intent
+
+```bash
+oaf-agent ask "Block IP 1.2.3.4 on WAN" --confirm
+```
+
+### Step 2 — The Phi-3 LoRA does 4 non-trivial things
+
+The agent sends to the LoRA:
+
+- the text intent `"Block IP 1.2.3.4 on WAN"`
+- the list of 116 available tools with their descriptions
+  (`get_cron_jobs`, `add_filter_rule`, `block_ip`,
+  `restart_unbound`, …)
+
+The model (Phi-3 mini + `opnsense-agent-phi35` LoRA, fine-tuned
+on ~13,700 intent → tool_call examples) produces:
+
+```text
+<|tool_calls|>
+[{"id": "call_…",
+  "type": "function",
+  "function": {
+    "name": "block_ip",
+    "arguments": "{\"ip\": \"1.2.3.4\", \"interface\": \"wan\"}"
+  }}]
+```
+
+These 4 decisions are **the interesting work**:
+
+1. **Intent understanding** — "Block IP" means blocking, not
+   adding an alias, not NAT, not a route. Distinguishing among
+   ~10 OPNsense action families from a free-form sentence.
+2. **Right tool selection** — among 116 tools in context, pick
+   `block_ip` (and not raw `add_filter_rule`, nor `add_to_alias`).
+   The LoRA learned that mapping during fine-tuning.
+3. **Structured parameter extraction** — spot that `1.2.3.4` is
+   the target IP, that `WAN` means the interface, and emit clean
+   JSON. Non-trivial: the intent doesn't say `interface=wan`, the
+   LoRA infers.
+4. **OpenAI tool_call formatting** — emit the response in the
+   structure the agent can parse. The LoRA respects the format
+   it was trained on (Phi-3 special tokens `<|tool_calls|>` …
+   `<|tool_response|>`).
+
+### Step 3 — The plumbing (mechanical, this is the repo)
+
+Once the `tool_call` is produced, the agent does **pure routing**,
+no intelligence:
+
+- Lookup in `TOOLS_EFFECTIVE["block_ip"]` →
+  `("POST", "/api/firewall/filter/addRule", mutating=True)`
+- `mutating=True` + `--confirm` present → proceed
+- `ARG_ADAPTERS["block_ip"]({"ip": "1.2.3.4", ...})` produces the
+  actual OPNsense payload:
+
+```json
+{"rule": {
+  "enabled": "1", "action": "block", "interface": "wan",
+  "direction": "in", "ipprotocol": "inet", "protocol": "any",
+  "source_net": "1.2.3.4", "destination_net": "any",
+  "description": "Blocked by oaf-agent"
+}}
+```
+
+- HTTPS POST to `127.0.0.1:4443` with Basic auth
+- OPNsense creates the `pf` rule and returns `{"result": "saved",
+  "uuid": "..."}`
+
+### Without the LoRA, doing the same thing by hand requires
+
+1. Knowing that "blocking an IP" goes through the `firewall/filter`
+   module, not `alias`, not `source_nat`.
+2. Knowing the exact endpoint: `/api/firewall/filter/addRule`.
+3. Knowing **every required field** of the schema (8 mandatory
+   fields, including `direction` and `ipprotocol` which are not
+   obvious).
+4. Building the JSON manually.
+5. Sending the curl with Basic auth and self-signed cert.
+
+The LoRA does steps 1–4 from one sentence. That's what we embed
+into the firewall — not a REST dispatcher.
+
+### Why a LoRA and not a generic LLM?
+
+A vanilla Phi-3 mini **wouldn't know** that OPNsense has a
+`/api/firewall/filter/addRule` endpoint, or that a field is named
+`source_net`. It would hallucinate plausible-looking but wrong
+API calls. The LoRA was trained specifically on the 102 canonical
+OPNsense functions (run v7: 102/102 validated) — that's the
+**domain-specific knowledge** it brings.
+
+It's also why a 3.8 B params model is enough: we don't need
+general reasoning, just a reliable intent → tool_call mapping
+within the OPNsense domain.
+
 ## Manual install on any OPNsense
 
 If you already have an OPNsense up and the artefacts compiled

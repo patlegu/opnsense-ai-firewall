@@ -90,6 +90,114 @@ Aucun sidecar, aucun trafic LLM en clair sur le réseau, aucun port
 externe lié au LLM (toujours `127.0.0.1`). L'agent local et
 `llama-server` partagent le même CPU/RAM que `pf`.
 
+## Comment ça marche concrètement (et où est l'intelligence du LLM)
+
+Légitime question : *« le repo a un dispatcher Python, un catalog
+de 116 endpoints et des adaptateurs de payload — à quoi sert
+vraiment le LLM ? »*
+
+Le LLM est ce qui fait le travail **non mécanique**. Le reste du
+repo n'est que la table d'écriture entre ce que le LoRA produit et
+l'API REST OPNsense. Exemple complet :
+
+### Étape 1 — L'humain écrit en langage naturel
+
+```bash
+oaf-agent ask "Block IP 1.2.3.4 on WAN" --confirm
+```
+
+### Étape 2 — Le LoRA Phi-3 fait 4 choses non triviales
+
+L'agent envoie au LoRA :
+
+- l'intent textuelle `"Block IP 1.2.3.4 on WAN"`
+- la liste des 116 outils disponibles avec leurs descriptions
+  (`get_cron_jobs`, `add_filter_rule`, `block_ip`, `restart_unbound`,
+  …)
+
+Le modèle (Phi-3 mini + LoRA `opnsense-agent-phi35`, entraîné sur
+~13 700 exemples d'intent → tool_call) produit :
+
+```text
+<|tool_calls|>
+[{"id": "call_…",
+  "type": "function",
+  "function": {
+    "name": "block_ip",
+    "arguments": "{\"ip\": \"1.2.3.4\", \"interface\": \"wan\"}"
+  }}]
+```
+
+Ces 4 décisions sont **le travail intéressant** :
+
+1. **Compréhension de l'intent** — "Block IP" est un blocage, pas
+   un ajout d'alias, pas un NAT, pas une route. Distinguer entre
+   les ~10 familles d'actions OPNsense possibles à partir d'une
+   phrase libre.
+2. **Choix du bon outil** — parmi 116 tools dans le contexte,
+   sélectionner `block_ip` (et pas `add_filter_rule` brut, ni
+   `add_to_alias`). Le LoRA a appris cette correspondance pendant
+   son fine-tuning.
+3. **Extraction structurée des paramètres** — repérer que
+   `1.2.3.4` est l'IP cible, que `WAN` désigne l'interface, et
+   produire un JSON propre. Pas trivial : l'intent ne dit pas
+   `interface=wan`, le LoRA infère.
+4. **Format OpenAI tool_call** — émettre la réponse dans la
+   structure que l'agent peut parser. Le LoRA respecte le format
+   appris en training (special tokens `<|tool_calls|>` …
+   `<|tool_response|>`).
+
+### Étape 3 — La plomberie (mécanique, c'est le repo)
+
+Une fois le `tool_call` produit, l'agent fait du **pur routage**,
+sans intelligence :
+
+- Lookup dans `TOOLS_EFFECTIVE["block_ip"]` →
+  `("POST", "/api/firewall/filter/addRule", mutating=True)`
+- `mutating=True` + `--confirm` présent → on continue
+- `ARG_ADAPTERS["block_ip"]({"ip": "1.2.3.4", ...})` produit le
+  payload réel OPNsense :
+
+```json
+{"rule": {
+  "enabled": "1", "action": "block", "interface": "wan",
+  "direction": "in", "ipprotocol": "inet", "protocol": "any",
+  "source_net": "1.2.3.4", "destination_net": "any",
+  "description": "Blocked by oaf-agent"
+}}
+```
+
+- POST HTTPS vers `127.0.0.1:4443` avec Basic auth
+- OPNsense crée la règle `pf` et renvoie `{"result": "saved",
+  "uuid": "..."}`
+
+### Sans LoRA, pour faire la même chose à la main, il faudrait
+
+1. Savoir que "bloquer une IP" se fait via le module
+   `firewall/filter`, pas `alias`, pas `source_nat`.
+2. Connaître l'endpoint exact : `/api/firewall/filter/addRule`.
+3. Connaître **tous les champs requis** par le schema (8 champs
+   obligatoires, dont `direction` et `ipprotocol` qui ne sont pas
+   évidents).
+4. Construire le JSON manuellement.
+5. Envoyer le curl avec auth Basic et certif self-signed.
+
+Le LoRA fait les étapes 1-4 à partir d'une phrase. C'est ça qu'on
+embarque dans le firewall — pas un dispatcher REST.
+
+### Pourquoi un LoRA et pas un LLM générique ?
+
+Un Phi-3 mini de base **ne saurait pas** qu'OPNsense a un endpoint
+`/api/firewall/filter/addRule` ni qu'un champ s'appelle
+`source_net`. Il hallucinerait des appels API plausibles mais
+faux. Le LoRA a été entraîné spécifiquement sur les 102 fonctions
+canoniques OPNsense (run v7 : 102 / 102 validés), c'est cette
+**connaissance domain-specific** qu'il apporte.
+
+C'est aussi pour ça qu'un modèle 3.8 B params suffit : on n'a
+pas besoin de raisonnement général, juste d'un mapping fiable
+intent → tool_call dans le domaine OPNsense.
+
 ## Installation manuelle (n'importe quelle OPNsense)
 
 Si tu as déjà une OPNsense up et les artefacts compilés (cf. la
