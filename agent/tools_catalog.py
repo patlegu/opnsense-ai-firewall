@@ -1,14 +1,32 @@
 """
-tools_catalog.py — catalogue auto-généré des fonctions OPNsense
-que le LoRA `opnsense-agent-phi35` peut produire en tool_call.
+tools_catalog.py — pont entre le LoRA et l'API OPNsense.
 
-GÉNÉRÉ AUTOMATIQUEMENT par scripts/generate-tools-catalog.py
-à partir du repo cyber-agent-engine. Ne PAS éditer à la main —
-modifier les sources et re-générer.
+Embarque dans le repo public la connaissance des fonctions sur
+lesquelles le LoRA `patlegu/opnsense-agent-phi35` a été entraîné,
+avec leur mapping vers les endpoints REST OPNsense correspondants.
+
+Sans ce fichier, l'agent ne saurait pas vers quel endpoint router
+un `tool_call` produit par le LoRA. Avec ce fichier, le repo est
+**self-contained** : aucune dépendance au repo training privé en
+runtime.
+
+GÉNÉRÉ AUTOMATIQUEMENT par `scripts/generate-tools-catalog.py`
+à partir du repo training cyber-agent-engine (privé). NE PAS
+éditer à la main — pour patcher un mapping ou ajouter un alias,
+utiliser `TOOLS_LOCAL_OVERRIDES` dans `oaf_agent.py` qui fusionne
+par-dessus ce catalog. Pour bumper le contenu, re-générer.
+
+Contenu :
+  - TOOLS_CATALOG       : 97 mappings name → (method, endpoint, mutating)
+  - TOOL_DESCRIPTIONS   : descriptions OpenAI-style envoyées au LoRA dans `tools[]`
+  - CANONICAL_UNMAPPED  : 5 noms canoniques (verify_v2) sans endpoint mappé
+                          → à compléter dans TOOLS_LOCAL_OVERRIDES si besoin
+  - KNOWN_UNMAPPED      : 282 noms training hors scope verify_v2
+                          → distingue 'hallucination LoRA' de 'connu mais hors scope'
 
 Source : verify_opnsense_v2.py (102 directives canoniques run v7).
 Catalogue : 97 / 102 fonctions résolues
-vers une méthode client OPNsense.
+automatiquement (les autres complétées via TOOLS_LOCAL_OVERRIDES).
 """
 
 from __future__ import annotations
