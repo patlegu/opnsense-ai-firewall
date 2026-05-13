@@ -143,37 +143,71 @@ def call_llama(messages: list[dict[str, Any]], tools: list[dict[str, Any]]) -> d
         return json.loads(resp.read().decode("utf-8"))
 
 
-# Overrides locaux : aliases / endpoints qu'on ajoute au catalog auto.
-# Cas typiques :
-#   - alias observé en sortie LoRA (ex: `diagnostics_cron` au lieu de
-#     `get_cron_jobs` que le catalog ne contient pas)
-#   - endpoint custom pour un wrapper haut niveau (`block_ip` qui passe
-#     via `addRule` avec un payload qu'on adapte ensuite)
+# ── Overrides locaux du catalog ─────────────────────────────────────────────
 #
-# Ces overrides COMPLÈTENT TOOLS_CATALOG (ils ne le remplacent pas).
+# Format : nom (côté LoRA / agent) → (méthode HTTP, endpoint REST, mutating)
+#
+# Ce dict est FUSIONNÉ avec TOOLS_CATALOG dans TOOLS_EFFECTIVE plus bas
+# (`{**TOOLS_CATALOG, **TOOLS_LOCAL_OVERRIDES}`). Les overrides locaux
+# **gagnent** en cas de conflit (Python dict merge order). Cinq usages :
+#
+#   1. Aliases de naming — le LoRA dit `diagnostics_cron`, le client
+#      expose `get_cron_jobs` : on déclare tous les noms qui désignent
+#      la même opération pour qu'ils soient acceptés au dispatch.
+#
+#   2. Wrappers composites — pas d'endpoint REST direct côté OPNsense.
+#      `block_ip` est conceptuellement `add_filter_rule` avec un payload
+#      spécifique (`action=block`, …). Le mapping logique vit ici, la
+#      construction du payload se fait via ARG_ADAPTERS plus bas.
+#
+#   3. Combler les fonctions canoniques sans mapping client — sur les
+#      102 directives validées par `verify_opnsense_v2.py`, certaines
+#      n'ont pas de méthode dans `opnsense_api_client.py` (listées
+#      comme `CANONICAL_UNMAPPED` dans `tools_catalog.py`). On les
+#      complète manuellement vers l'endpoint REST direct quand il
+#      existe.
+#
+#   4. Aliases sémantiques — `system_status` et `get_system_information`
+#      pointent tous deux sur `/api/diagnostics/system/system_information`.
+#      Le LoRA choisit l'un ou l'autre selon la formulation de l'intent.
+#
+#   5. Endpoints ratés par le parser AST — si une méthode du client
+#      construit son URL dynamiquement (branches `if/else`, variables),
+#      le script de génération peut la rater. On patche ici en attendant
+#      d'améliorer le parser.
 TOOLS_LOCAL_OVERRIDES: dict[str, tuple[str, str, bool]] = {
-    # Aliases vus en sortie LoRA mais hors catalog auto
+    # ── 1. Aliases naming vus en sortie LoRA hors catalog auto ──
     "diagnostics_cron": ("GET", "/api/cron/settings/searchJobs", False),
     "get_cron_jobs": ("GET", "/api/cron/settings/searchJobs", False),
     "list_cron_jobs": ("GET", "/api/cron/settings/searchJobs", False),
     "get_filter_rule": ("GET", "/api/firewall/filter/get", False),
     "list_firewall_rules": ("GET", "/api/firewall/filter/get", False),
+    "list_firewall_states": ("GET", "/api/diagnostics/firewall/pf_states", False),
     "wireguard_client_get_client_builder": ("GET", "/api/wireguard/client/get", False),
     "get_wireguard_clients": ("GET", "/api/wireguard/client/get", False),
     "get_wireguard_peers": ("GET", "/api/wireguard/server/get", False),
     "list_wg_peers": ("GET", "/api/wireguard/server/get", False),
-    "system_status": ("GET", "/api/diagnostics/system/system_information", False),
-    "get_system_information": ("GET", "/api/diagnostics/system/system_information", False),
-    # Combler les 5 canoniques sans mapping client (CANONICAL_UNMAPPED) :
-    "get_system_status": ("GET", "/api/diagnostics/system/system_information", False),
-    "backup_configuration": ("GET", "/api/core/backup/download/this", False),
-    "create_restore_point": ("POST", "/api/core/firmware/savepoint", True),  # alias logique sur savepoint
-    "move_filter_rule": ("POST", "/api/firewall/filter/moveRule/{uuid}", True),  # endpoint observé sur 26.x
-    # import_alias : pas d'endpoint REST natif, à composer si vraiment besoin
-    "list_firewall_states": ("GET", "/api/diagnostics/firewall/pf_states", False),
+
+    # ── 2. Wrappers composites (pas d'endpoint direct, ARG_ADAPTERS gère le payload) ──
     "block_ip": ("POST", "/api/firewall/filter/addRule", True),
     "restart_unbound": ("POST", "/api/unbound/service/restart", True),
     "restart_suricata": ("POST", "/api/ids/service/restart", True),
+
+    # ── 3. Combler les CANONICAL_UNMAPPED de tools_catalog.py ──
+    "backup_configuration": ("GET", "/api/core/backup/download/this", False),
+    "create_restore_point": ("POST", "/api/core/firmware/savepoint", True),
+    "move_filter_rule": ("POST", "/api/firewall/filter/moveRule/{uuid}", True),
+    # `import_alias` reste hors catalog : pas d'endpoint REST natif côté
+    # OPNsense, à composer si vraiment besoin (open un issue / PR).
+
+    # ── 4. Aliases sémantiques (deux noms = un seul endpoint) ──
+    "system_status": ("GET", "/api/diagnostics/system/system_information", False),
+    "get_system_status": ("GET", "/api/diagnostics/system/system_information", False),
+    "get_system_information": ("GET", "/api/diagnostics/system/system_information", False),
+
+    # ── 5. Méthodes client ratées par le parser AST (à corriger côté script
+    # quand on aura le temps — pour l'instant on hardcode ici) ──
+    # (aucune actuellement, mais c'est ici qu'on les mettrait)
 }
 
 # Catalog effectif = auto-généré + overrides locaux. C'est ce que
