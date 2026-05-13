@@ -7,7 +7,7 @@ embedded LLM (FreeBSD-native `llama-server` + Phi-3 OPNsense LoRA)
 that drives its own REST API from *inside* the VM. **No sidecar.**
 
 > ⚠️ **Lab use only.** This topology is deliberately discouraged in
-> production (see [`docs/why-not-in-prod.md`](docs/why-not-in-prod.md)
+> production (see [`docs/why-not-in-prod.en.md`](docs/why-not-in-prod.en.md)
 > for the 4 concrete reasons: attack surface, CPU contention,
 > lifecycle drift, audit). The point of this repo is to **measure**
 > how bad an idea this is and where the thresholds are.
@@ -24,7 +24,7 @@ that drives its own REST API from *inside* the VM. **No sidecar.**
 | Intent → response latency | ~10 s on cx33 (4 vCPU CPU-only) |
 | `TOOLS_CATALOG` coverage | **101 / 102** canonical functions (verify v7) dispatched: 97 auto-resolved via `scripts/generate-tools-catalog.py` + 4 local overrides; only `import_alias` remains (no native OPNsense REST endpoint) |
 
-Detailed demo and test logs: [`docs/demo-results.md`](docs/demo-results.md).
+Detailed demo and test logs: [`docs/demo-results.en.md`](docs/demo-results.en.md).
 
 Forked from `kickstart-forge` (private Hetzner Cloud template).
 
@@ -50,7 +50,7 @@ Forked from `kickstart-forge` (private Hetzner Cloud template).
 2. **`llama-server` compiled for FreeBSD** — binary + 6 `.so`
    embedded (`libllama`, `libggml*`, `libopenblas`, `libgfortran`,
    `libquadmath`). This is the main effort of the repo, see
-   [`docs/build-llama-freebsd.md`](docs/build-llama-freebsd.md).
+   [`docs/build-llama-freebsd.en.md`](docs/build-llama-freebsd.en.md).
    Tag `llama.cpp` ≥ b9000 (for native `tools` support + `--jinja`).
 3. **The merged Phi-3+LoRA GGUF**: [`patlegu/opnsense-agent-phi35-q4_k_m.gguf`](https://huggingface.co/patlegu/opnsense-agent-phi35/resolve/main/opnsense-agent-phi35-q4_k_m.gguf)
    on Hugging Face (~2.4 GB, Q4_K_M, already fused — no `--lora`
@@ -239,7 +239,7 @@ Expected output:
 
 From there, `oaf-agent ask "Show system information"` returns OPNsense
 JSON, `oaf-agent ask "Block IP 1.2.3.4 on WAN" --confirm` creates a
-real `pf` rule. See [`docs/demo-results.md`](docs/demo-results.md) for
+real `pf` rule. See [`docs/demo-results.en.md`](docs/demo-results.en.md) for
 validation traces.
 
 ## Hetzner automation (Tofu, optional)
@@ -309,24 +309,23 @@ plus a Python agent talking to the OPNsense API over HTTPS.
 
 ## Documentation
 
-- [`docs/why-not-in-prod.md`](docs/why-not-in-prod.md) — the 4
-  concrete reasons (in French)
-- [`docs/build-llama-freebsd.md`](docs/build-llama-freebsd.md) —
-  native FreeBSD compilation (stage B, in French)
-- [`docs/embedded-llm.md`](docs/embedded-llm.md) — rc.d service +
-  local agent architecture (in French)
-- [`docs/demo-results.md`](docs/demo-results.md) — real-world demo
-  traces (read + write, in French)
-- [`docs/access-credentials.md`](docs/access-credentials.md) —
-  inherited from kickstart: secrets / SSH / OPNsense API (in French)
+- [`docs/why-not-in-prod.en.md`](docs/why-not-in-prod.en.md) — the 4
+  concrete reasons
+- [`docs/build-llama-freebsd.en.md`](docs/build-llama-freebsd.en.md) —
+  native FreeBSD compilation (stage B)
+- [`docs/embedded-llm.en.md`](docs/embedded-llm.en.md) — rc.d service +
+  local agent architecture
+- [`docs/demo-results.en.md`](docs/demo-results.en.md) — real-world demo
+  traces (read + write)
+- [`docs/access-credentials.en.md`](docs/access-credentials.en.md) —
+  inherited from kickstart: secrets / SSH / OPNsense API
 
-> The detailed documentation is currently in French. Translation
-> requests welcome — open an issue if a specific doc is blocking you.
+> French versions are also available alongside (`docs/*.md`).
 
 ## Origin
 
 Spawned from `kickstart-forge` (internal template) using the
 `*-forge` naming convention (3-letter prefix = `oaf`). Everything
 that is not specific to the in-box LLM comes from the kickstart;
-LLM-specific code lives in `docs/embedded-llm.md` and the
+LLM-specific code lives in `docs/embedded-llm.en.md` and the
 `opnsense_llm_*` Tofu variables.
