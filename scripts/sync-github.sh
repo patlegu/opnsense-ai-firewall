@@ -59,6 +59,9 @@ EXCLUDE_PATHS=(
     # public, donc on ne les expose pas.
     scripts/upload-llm-assets.sh           # GitLab Generic Packages
     scripts/generate-tools-catalog.py      # repo training privé
+    # Artefacts générés par accident à la racine (tofu hors-place)
+    terraform.tfstate
+    terraform.tfstate.backup
 )
 
 echo "[sync] filter-repo : retire les ${#EXCLUDE_PATHS[@]} fichiers internes de tout l'historique ..."

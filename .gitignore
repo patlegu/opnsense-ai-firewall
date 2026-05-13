@@ -8,6 +8,10 @@ infra/**/terraform.tfvars
 infra/**/terraform.tfvars.bak.*
 infra/**/.terraform.tfstate.lock.info
 infra/**/*.auto.tfvars.json
+# tfstate à la racine (générés par accident si on lance tofu hors infra/envs/...)
+/terraform.tfstate
+/terraform.tfstate.*
+/.terraform/
 
 # Secrets en clair (les .sops chiffrés sont versionnés)
 .env
